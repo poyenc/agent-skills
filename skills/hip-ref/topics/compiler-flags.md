@@ -103,6 +103,24 @@ llvm-objdump --mcpu=gfx942 -d kernel.o > kernel.isa
    not per CU. Max is 8, not 32.
 4. **-O0 for profiling**: don't profile unoptimized code. Use -O3 + debug info (-g).
 
+## CDNA3 vs CDNA4 differences
+
+| Aspect                | CDNA3                     | CDNA4                             |
+|-----------------------|---------------------------|-----------------------------------|
+| Target arch           | gfx940 (MI300A), gfx942 (MI300X/MI325X) | **gfx950** (MI350X/MI355X) |
+| Wave mode             | wave64                    | wave64 (same)                     |
+| CU mode               | -mcumode (default)        | Same                              |
+| VGPR/occupancy report | ArchVGPRs + AGPRs separate| ArchVGPRs + AGPRs **additive**    |
+| New target features   | —                         | scaled-mfma, f8f6f4, prng, permlane-swap, lds-transpose-read |
+| Inline asm cache flags| `glc slc dlc`             | **`scope:X th:Y`** (new syntax)   |
+
+**Key migration steps for CDNA4**:
+1. Add `--offload-arch=gfx950` to build command
+2. Inline assembly using `glc`/`slc`/`dlc` must be updated to `scope:`/`th:` syntax
+3. Occupancy analysis must account for additive AGPR+VGPR (not max)
+4. `s_set_gpr_idx_mode` / `s_set_gpr_idx_idx` are removed — check for usage
+5. `expcnt` in `s_waitcnt` is unused on gfx950
+
 ## Sources
 
 - LLVM AMDGPU Backend: https://rocm.docs.amd.com/projects/llvm-project/en/latest/LLVM/llvm/html/AMDGPUUsage.html

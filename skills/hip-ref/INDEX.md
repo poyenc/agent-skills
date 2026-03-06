@@ -23,7 +23,7 @@ PDFs: pdfs/cdna3-isa-reference.pdf (Ch.2 Shader Processor), pdfs/cdna4-isa-refer
 Links: https://gpuopen.com/learn/amd-lab-notes/amd-lab-notes-register-pressure-readme/
 
 ## cross-lane-ops
-Keywords: DPP, ds_permute, ds_bpermute, ds_swizzle, cross-lane, warp shuffle, shfl, butterfly, reduction, broadcast, row rotation, wave-level, permute, lane swap, __shfl, dpp_ctrl
+Keywords: DPP, ds_permute, ds_bpermute, ds_swizzle, cross-lane, warp shuffle, shfl, butterfly, reduction, broadcast, row rotation, wave-level, permute, lane swap, __shfl, dpp_ctrl, permlane, permlane16_swap, permlane32_swap, v_permlane16_swap_b32, v_permlane32_swap_b32
 Topic: topics/cross-lane-ops.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.6 Data Share), pdfs/cdna4-isa-reference.pdf (Ch.6)
 Links: https://gpuopen.com/learn/amd-gcn-assembly-cross-lane-operations/
@@ -46,7 +46,7 @@ PDFs: pdfs/amd-cdna3-whitepaper.pdf, pdfs/amd-cdna4-whitepaper.pdf
 Links: https://rocm.docs.amd.com/en/latest/conceptual/gpu-arch.html
 
 ## lds-bank-conflicts
-Keywords: LDS, bank conflict, shared memory, local data share, ds_read, ds_write, padding, XOR, bank, conflict-free, swizzle, CK, composable kernel, ck_tile
+Keywords: LDS, bank conflict, shared memory, local data share, ds_read, ds_write, padding, XOR, bank, conflict-free, swizzle, CK, composable kernel, ck_tile, ds_read_tr, transpose read, ds_read_b64_tr
 Topic: topics/lds-bank-conflicts.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.6 Data Share), pdfs/cdna4-isa-reference.pdf (Ch.6)
 Links: https://rocm.docs.amd.com/projects/composable_kernel/en/latest/conceptual/ck_tile/hardware/lds_bank_conflicts.html
@@ -57,13 +57,13 @@ Topic: topics/buffer-vs-flat.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.5 Vector Memory, Ch.8 Flat Memory), pdfs/cdna4-isa-reference.pdf (Ch.5, Ch.8)
 
 ## async-copy-prefetch
-Keywords: async copy, prefetch, global to LDS, buffer_load_lds, staging, DME, data movement engine, double buffer, software pipeline, producer consumer, global_load_lds, async
+Keywords: async copy, prefetch, global to LDS, buffer_load_lds, staging, DME, data movement engine, double buffer, software pipeline, producer consumer, global_load_lds, async, scratch_load_lds
 Topic: topics/async-copy-prefetch.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.5), pdfs/cdna4-isa-reference.pdf (Ch.5)
 Links: https://rocm.docs.amd.com/projects/rocWMMA/en/latest/conceptual/programmers-guide.html
 
 ## cache-policies
-Keywords: GLC, SLC, DLC, cache policy, L2 bypass, coherence, write-through, write-back, scope, glc, slc, dlc, cache control, non-temporal, streaming
+Keywords: GLC, SLC, DLC, cache policy, L2 bypass, coherence, write-through, write-back, scope, glc, slc, dlc, cache control, non-temporal, streaming, SCOPE, TH, temporal hint, high-temporal, scope:SCOPE_DEV, th:TH_LOAD_NT
 Topic: topics/cache-policies.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.5 Vector Memory), pdfs/cdna4-isa-reference.pdf (Ch.5)
 
@@ -126,12 +126,12 @@ Topic: topics/exec-mask-control-flow.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.3 Scalar ALU, Ch.4 Vector ALU), pdfs/cdna4-isa-reference.pdf (Ch.3, Ch.4)
 
 ## packed-math
-Keywords: packed, v_pk, FP16, BF16, packed arithmetic, two-element, VOPD, dual issue, packed_convert, v_pk_fma_f16, v_pk_add_f16, v_pk_mul_f16, packed operation
+Keywords: packed, v_pk, FP16, BF16, packed arithmetic, two-element, VOPD, dual issue, packed_convert, v_pk_fma_f16, v_pk_add_f16, v_pk_mul_f16, packed operation, v_cvt_scalef32, cvt_scale, scaled convert, v_dot2c_f32_bf16
 Topic: topics/packed-math.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.4 Vector ALU), pdfs/cdna4-isa-reference.pdf (Ch.4)
 
 ## sparsity
-Keywords: sparsity, structured sparsity, 2:4, sparse MFMA, sparse matrix, compression, sparse index, metadata, pruning, sparse_mfma
+Keywords: sparsity, structured sparsity, 2:4, sparse MFMA, sparse matrix, compression, sparse index, metadata, pruning, sparse_mfma, SMFMAC, v_smfmac, smfmac_scale
 Topic: topics/sparsity.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.7), pdfs/cdna4-isa-reference.pdf (Ch.7)
 
@@ -146,6 +146,6 @@ Topic: topics/waitcnt-hazards.md
 PDFs: pdfs/cdna3-isa-reference.pdf (Ch.2, Ch.3), pdfs/cdna4-isa-reference.pdf (Ch.2, Ch.3)
 
 ## hip-intrinsics
-Keywords: intrinsic, __builtin_amdgcn, __shfl, __ballot, __any, __all, atomicAdd, atomicCAS, __ldg, __expf, __log2f, __sinf, warp, shuffle, device function, builtin, HIP API, lane_id, warp_size
+Keywords: intrinsic, __builtin_amdgcn, __shfl, __ballot, __any, __all, atomicAdd, atomicCAS, __ldg, __expf, __log2f, __sinf, warp, shuffle, device function, builtin, HIP API, lane_id, warp_size, v_prng_b32, prng, stochastic rounding
 Topic: topics/hip-intrinsics.md
 Links: https://rocm.docs.amd.com/projects/HIP/en/develop/reference/kernel_language.html, https://llvm.org/docs/AMDGPUUsage.html

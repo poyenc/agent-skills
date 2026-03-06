@@ -20,14 +20,15 @@ tuning — but higher occupancy is not always better.
 | Resource                   | CDNA3 (gfx940/942)          | CDNA4 (gfx950)              |
 |----------------------------|-----------------------------|-----------------------------|
 | SIMDs per CU               | 4                           | 4                           |
-| Max waves per SIMD         | 8                           | 8 (expected)                |
-| Max waves per CU           | 32                          | 32 (expected)               |
-| VGPRs per SIMD             | 512                         | 512 (may be 768 — check ISA)|
-| SGPR budget per SIMD       | 800                         | TBD                         |
-| Max SGPRs per wave         | 102 (+4 special)            | TBD                         |
-| LDS per CU                 | 64 KB                       | 64 KB                       |
-| VGPR allocation granularity| 16 VGPRs (wave64)           | 16 VGPRs (expected)         |
-| SGPR allocation granularity| 16 SGPRs                    | 16 SGPRs (expected)         |
+| Max waves per SIMD         | 8                           | 8                           |
+| Max waves per CU           | 32                          | 32                          |
+| VGPRs per SIMD             | 512 ArchVGPR + 512 AGPR     | 512 unified (shared pool)   |
+| AGPR occupancy rule        | max(ArchVGPRs, AGPRs)       | ArchVGPRs + AGPRs (additive)|
+| SGPR budget per SIMD       | 800                         | 800                         |
+| Max SGPRs per wave         | 102 (+4 special)            | 102 (+4 special)            |
+| LDS per CU                 | 64 KB                       | 128 KB                      |
+| VGPR allocation granularity| 16 VGPRs (wave64)           | 16 VGPRs                    |
+| SGPR allocation granularity| 16 SGPRs                    | 16 SGPRs                    |
 
 ### Occupancy table — VGPRs vs waves per SIMD (CDNA3, 512 VGPRs/SIMD)
 
@@ -70,18 +71,25 @@ For the CU (LDS is CU-level, not SIMD-level):
   waves_per_simd = min(vgpr_waves, sgpr_waves, lds_waves_per_simd, 8)
 ```
 
-### AGPR impact on occupancy (CDNA3)
+### AGPR impact on occupancy
 
 ```
-On CDNA3, ArchVGPRs and AccVGPRs share the same physical register file.
-Effective VGPR usage = max(ArchVGPRs_allocated, AGPRs_allocated)
+CDNA3: ArchVGPRs and AccVGPRs are SEPARATE physical register files.
+  Effective VGPR usage = max(ArchVGPRs_allocated, AGPRs_allocated)
+  Example:
+    80 ArchVGPRs + 64 AGPRs  → max(80, 64)  = 80  → 6 waves
+    64 ArchVGPRs + 80 AGPRs  → max(64, 80)  = 80  → 6 waves
+    128 ArchVGPRs + 16 AGPRs → max(128, 16) = 128 → 4 waves
+  AGPRs are "free" as long as they don't exceed your ArchVGPR allocation.
 
-Example:
-  80 ArchVGPRs + 64 AGPRs → max(80, 64) = 80 → 6 waves
-  64 ArchVGPRs + 80 AGPRs → max(64, 80) = 80 → 6 waves
-  128 ArchVGPRs + 16 AGPRs → max(128, 16) = 128 → 4 waves
-
-AGPRs are "free" as long as they don't exceed your ArchVGPR allocation.
+CDNA4: ArchVGPRs and AccVGPRs are UNIFIED (same physical storage).
+  Effective VGPR usage = ArchVGPRs_allocated + AGPRs_allocated
+  Example:
+    80 ArchVGPRs + 64 AGPRs  → 80+64  = 144 → 3 waves (was 6 on CDNA3!)
+    64 ArchVGPRs + 80 AGPRs  → 64+80  = 144 → 3 waves
+    128 ArchVGPRs + 16 AGPRs → 128+16 = 144 → 3 waves (was 4 on CDNA3)
+  AGPRs ALWAYS cost occupancy on CDNA4. MFMA-heavy kernels may see lower
+  occupancy — compensated by doubled MFMA throughput (2x K dimension).
 ```
 
 ### Checking occupancy
@@ -135,8 +143,8 @@ Rule of thumb:
 2. **The 128→129 cliff**: Most common performance regression. Adding one temporary
    can push past 128 VGPRs, losing 25% occupancy. Watch compiler output.
 
-3. **LDS as the hidden bottleneck**: 64KB per CU, shared among all waves. If your
-   workgroup uses 32KB LDS → max 2 workgroups per CU → may limit to 2 waves/SIMD.
+3. **LDS as the hidden bottleneck**: 64KB per CU (CDNA3) or 128KB (CDNA4), shared
+   among all waves. CDNA4's larger LDS relaxes this constraint.
 
 4. **amdgpu_waves_per_eu causing spills**: Setting too high forces the compiler to
    reduce VGPRs, potentially spilling to scratch. 3 waves with no spills almost
@@ -147,14 +155,17 @@ Rule of thumb:
 
 ## CDNA3 vs CDNA4 differences
 
-| Aspect              | CDNA3 (gfx940/942)              | CDNA4 (gfx950)                   |
-|---------------------|----------------------------------|-----------------------------------|
-| VGPRs per SIMD      | 512                              | 512 (may be 768 — check ISA)     |
-| AGPR accounting     | max(ArchVGPRs, AGPRs)            | TBD — if unified, may be additive|
-| Occupancy cliffs    | 64, 72, 80, 96, 128, 144, 256   | Shifts if VGPR file is larger    |
+| Aspect              | CDNA3 (gfx940/942)              | CDNA4 (gfx950)                       |
+|---------------------|----------------------------------|--------------------------------------|
+| VGPRs per SIMD      | 512 ArchVGPR + 512 AGPR (separate)| 512 unified (ArchVGPR + AGPR shared)|
+| AGPR accounting     | max(ArchVGPRs, AGPRs)            | ArchVGPRs + AGPRs (additive)         |
+| Occupancy cliffs    | 64, 72, 80, 96, 128, 144, 256   | Same cliffs, but AGPR cost now adds  |
+| LDS per CU          | 64 KB                            | 128 KB (relaxes LDS-limited occupancy)|
+| LDS occupancy       | 64KB / LDS_per_WG                | 128KB / LDS_per_WG (2x headroom)    |
 
-If CDNA4 has 768 VGPRs/SIMD, cliffs become less punishing:
-768/128 = 6, 768/144 = 5 — more headroom above 128 VGPRs.
+**CDNA4 occupancy tradeoff**: MFMA-heavy kernels lose occupancy from additive AGPR
+accounting, but gain from 128 KB LDS (more workgroups fit) and doubled MFMA K-dimensions
+(each wave does 2x more compute per instruction, needing fewer waves for throughput).
 
 ## Sources
 

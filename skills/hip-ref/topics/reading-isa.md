@@ -81,6 +81,23 @@ llvm-objdump --mcpu=gfx942 -d kernel.o | grep -A30 ".amdhsa_kernel"
 2. **RGA vs actual hardware**: RGA compiles offline without running. Actual
    execution may differ due to runtime conditions.
 
+## CDNA3 vs CDNA4 differences
+
+| Aspect                  | CDNA3 (gfx940/942)          | CDNA4 (gfx950)                     |
+|-------------------------|-----------------------------|------------------------------------|
+| Target for llvm-objdump | `--mcpu=gfx942`             | `--mcpu=gfx950`                    |
+| RGA target              | `-c gfx942`                 | `-c gfx950`                        |
+| AGPR in ISA output      | `a[0:15]` (separate file)   | `a[0:15]` (aliases VGPRs)          |
+| v_accvgpr_read/write    | Real instruction (1 cycle)  | No-op (may appear but zero cost)   |
+| Cache flag syntax       | `glc slc dlc`               | `scope:X th:Y` (new syntax)        |
+| New instructions to find| —                           | v_permlane*_swap, v_prng_b32, v_cvt_scalef32_*, ds_read_*_tr_* |
+| s_waitcnt expcnt        | Functional                  | Present but ignored                |
+
+**Reading CDNA4 ISA**: look for new instructions like `v_permlane32_swap_b32` and
+`v_cvt_scalef32_*` in the disassembly. Cache flags will use `scope:` and `th:`
+instead of `glc`/`slc`/`dlc`. AGPR instructions (`v_accvgpr_read/write`) may
+still appear but are effectively free on CDNA4's unified register file.
+
 ## Sources
 
 - Reading AMD GPU ISA tutorial: https://rocm.blogs.amd.com/software-tools-optimization/amdgcn-isa/README.html

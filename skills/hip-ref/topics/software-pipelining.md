@@ -100,21 +100,46 @@ With double-buffer:
 
 Example (FP16, 128×64 tile):
   2 × 128 × 64 × 2 = 32,768 bytes = 32 KB per buffer × 2 = 64 KB total
-  → Uses ALL LDS → only 1 workgroup per CU → 4 waves per CU (1 per SIMD)
 
-If you need >64KB: reduce tile size, or use VGPR staging instead of LDS double-buf.
+  CDNA3 (64 KB LDS per CU):
+    → Uses ALL LDS → only 1 workgroup per CU → 4 waves per CU (1 per SIMD)
+    → No room for larger tiles or triple buffering
+
+  CDNA4 (128 KB LDS per CU):
+    → Uses 50% LDS → 2 workgroups possible → up to 8 waves per CU
+    → Or: use larger tiles (256×64) with double-buffer in 128 KB
+    → Or: triple-buffer (3 × 32 KB = 96 KB) with room to spare
+
+If you need >LDS limit: reduce tile size, or use VGPR staging instead.
 ```
 
 ## Pitfalls
 
-1. **Double buffer uses 2× LDS**: may limit to 1 workgroup per CU.
+1. **Double buffer uses 2× LDS**: may limit to 1 workgroup per CU on CDNA3 (64KB).
+   CDNA4 (128KB) gives 2× more room.
 2. **Forgetting s_barrier**: between LDS write (wave A) and LDS read (wave B).
 3. **Over-pipelining**: triple buffering adds complexity with diminishing returns.
-   Double buffer is usually sufficient.
+   Double buffer is usually sufficient (but CDNA4's 128KB makes triple feasible).
 4. **Wrong vmcnt value**: off-by-one in vmcnt causes use-before-ready bugs.
    Count your outstanding loads carefully.
+
+## CDNA3 vs CDNA4 differences
+
+| Aspect              | CDNA3 (gfx940/942)       | CDNA4 (gfx950)                    |
+|---------------------|---------------------------|-----------------------------------|
+| LDS per CU          | 64 KB                     | **128 KB** (2× more buffer room)  |
+| Double-buffer room  | Tight (may fill 64KB)     | Comfortable (only 50% at 64KB)    |
+| Triple-buffer       | Often impractical          | Feasible within 128KB             |
+| global_load_lds     | DWORD only                 | DWORD + DWORDX3/DWORDX4 (wider)  |
+| MFMA K-dimension    | 8 (FP16 32×32)            | 16 (doubled — more compute/tile)  |
+
+**CDNA4 enables more aggressive pipelining**: 128 KB LDS allows larger tiles or
+triple-buffering without occupancy penalty. Wider global_load_lds (DWORDX4) moves
+more data per instruction directly to LDS. Doubled MFMA K-dimension means more
+compute work per tile iteration, giving more VMEM cycles to hide.
 
 ## Sources
 
 - rocWMMA programmer's guide (PGR1_LB2 pattern): https://rocm.docs.amd.com/projects/rocWMMA/en/latest/conceptual/programmers-guide.html
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Chapter 2 (pipeline model)
+- CDNA4 ISA: `pdfs/cdna4-isa-reference.pdf` — Chapter 2

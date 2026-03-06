@@ -14,8 +14,8 @@ analysis, or comparing architectures.
 | **ISA target**             | gfx942    | gfx940      | gfx942    | gfx950     | gfx950     |
 | **Process**                | 5nm+6nm   | 5nm+6nm     | 5nm+6nm   | 3nm+6nm    | 3nm+6nm    |
 | **CUs**                    | 304       | 228         | 304       | 256        | 256        |
-| **XCDs**                   | 8         | 6           | 8         | 8          | 8          |
-| **CUs/XCD**                | 38        | 38          | 38        | 32         | 32         |
+| **XCDs**                   | 8         | 6           | 8         | 12         | 12         |
+| **CUs/XCD**                | 38        | 38          | 38        | 40         | 40         |
 | **SIMDs/CU**               | 4         | 4           | 4         | 4          | 4          |
 | **Matrix cores/CU**        | 4         | 4           | 4         | 4          | 4          |
 | **Stream processors**      | 19,456    | 14,592      | 19,456    | 16,384     | 16,384     |
@@ -23,12 +23,13 @@ analysis, or comparing architectures.
 |                            |           |             |           |            |            |
 | **HBM type**               | HBM3     | HBM3        | HBM3E    | HBM3E      | HBM3E      |
 | **HBM capacity**           | 192 GB    | 128 GB      | 256 GB    | 288 GB     | 288 GB     |
-| **HBM bandwidth**          | 5.3 TB/s  | 5.3 TB/s    | 6.0 TB/s  | 8.0 TB/s   | 8.0 TB/s   |
+| **HBM bandwidth**          | 5.3 TB/s  | 5.3 TB/s    | 6.0 TB/s  | 12.2 TB/s  | 12.2 TB/s  |
 | **Memory interface**       | 8192-bit  | 8192-bit    | 8192-bit  | 8192-bit   | 8192-bit   |
-| **L2 total**               | 256 MB    | 192 MB      | 256 MB    | 256 MB     | 256 MB     |
+| **L2 total**               | 32 MB     | 24 MB       | 32 MB     | 48 MB      | 48 MB      |
 | **L2 per XCD**             | 4 MB      | 4 MB        | 4 MB      | 4 MB       | 4 MB       |
 | **L1 per CU**              | 32 KB     | 32 KB       | 32 KB     | 32 KB      | 32 KB      |
-| **LDS per CU**             | 64 KB     | 64 KB       | 64 KB     | 64 KB      | 64 KB      |
+| **LDS per CU**             | 64 KB     | 64 KB       | 64 KB     | 128 KB     | 128 KB     |
+| **VGPR/AGPR file**         | Separate  | Separate    | Separate  | Unified    | Unified    |
 |                            |           |             |           |            |            |
 | **Peak FP16 (TFLOPS)**     | 1,307     | 981         | 1,307     | 2,310      | 2,517      |
 | **Peak BF16 (TFLOPS)**     | 1,307     | 981         | 1,307     | 2,310      | 2,517      |
@@ -72,7 +73,7 @@ These deliver 2-4× TFLOPS vs FP16 while maintaining useful precision via shared
 
 | Metric (FP16)          | MI300X    | MI350X    | MI355X    |
 |------------------------|-----------|-----------|-----------|
-| Ridge point (FLOP/B)   | 247       | 289       | 315       |
+| Ridge point (FLOP/B)   | 247       | 189       | 206       |
 | TFLOPS/Watt            | 1.74      | 2.31      | 1.80      |
 | TFLOPS/GB HBM          | 6.8       | 8.0       | 8.7       |
 

@@ -139,6 +139,19 @@ unsigned __builtin_amdgcn_workgroup_id_z();  // blockIdx.z
 | __ldg                 | (plain load)           | AMD has no texture cache path  |
 | atomicAdd (float)     | atomicAdd (float)      | Native on CDNA3+               |
 
+## CDNA4-only builtins
+
+```cpp
+// Permlane swaps (CDNA4 only — VALU pipeline, no LDS contention):
+__builtin_amdgcn_permlane16_swap(vdst, src0)      // swap odd/even 16-lane rows
+__builtin_amdgcn_permlane32_swap(vdst, src0)      // swap lanes 0-31 with 32-63
+// NOTE: destructive — both vdst and src0 are modified
+
+// Hardware PRNG (CDNA4 only):
+unsigned __builtin_amdgcn_prng_b32(unsigned src);  // v_prng_b32
+// Generates pseudo-random numbers; useful for stochastic rounding
+```
+
 ## Pitfalls
 
 1. **warpSize = 64**: all masks are 64-bit, reductions need 6 steps not 5.
@@ -147,6 +160,8 @@ unsigned __builtin_amdgcn_workgroup_id_z();  // blockIdx.z
 3. **__ldg doesn't exist**: AMD has no explicit read-only texture cache load.
    Regular loads go through L1/L2 caching as normal.
 4. **__builtin_amdgcn_* are Clang-specific**: not portable to other compilers.
+5. **Permlane swaps are CDNA4-only**: code using `__builtin_amdgcn_permlane32_swap`
+   will fail on gfx942. Guard with `#if __gfx950__` or runtime arch detection.
 
 ## Sources
 

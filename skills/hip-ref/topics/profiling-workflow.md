@@ -89,6 +89,20 @@ omnitrace-instrument -- ./my_kernel
 4. **Kernel name matching**: rocprof uses mangled kernel names. Use `--stats` first
    to find the exact name, then filter with `-k kernelname`.
 
+## CDNA3 vs CDNA4 differences
+
+| Aspect                | CDNA3 (gfx940/942)       | CDNA4 (gfx950)                    |
+|-----------------------|--------------------------|-----------------------------------|
+| rocprof / omniperf    | Fully supported          | Requires ROCm version with gfx950 support |
+| Counter names         | Standard MI300 counters  | Same names (SQ_*, TCC_*, TCP_*)   |
+| GDS counters          | Available                | **Removed** (no GDS on CDNA4)     |
+| MFMA counter meaning  | Per-instruction          | Per-instruction (but 2× K/instr)  |
+| Occupancy metrics     | Based on max(VGPR,AGPR)  | Based on VGPR+AGPR (additive)     |
+
+**Profiling note for CDNA4**: MFMA instruction counts (SQ_INSTS_MFMA) should be
+interpreted carefully — each CDNA4 MFMA instruction processes 2× more data than
+CDNA3 (doubled K dimension). Fewer instructions can mean the same or more compute.
+
 ## Sources
 
 - Omniperf (rocprofiler-compute): https://rocm.docs.amd.com/projects/rocprofiler-compute/en/latest/

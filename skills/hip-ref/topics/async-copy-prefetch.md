@@ -85,18 +85,32 @@ Example with 4 in-flight loads, need oldest:
 ## Pitfalls
 
 1. **Forgetting s_barrier between LDS write and read (different waves)**: race condition.
-2. **Double-buffer halves available LDS**: 64KB → 2 × 32KB. May limit workgroup count.
+2. **Double-buffer halves available LDS**: 64KB (CDNA3) or 128KB (CDNA4) per CU.
+   CDNA4's 2× LDS makes double-buffering much less constrained.
 3. **buffer_load_lds M0 register**: must be set correctly or data goes to wrong LDS offset.
 
 ## CDNA3 vs CDNA4 differences
 
-| Aspect             | CDNA3              | CDNA4                    |
-|--------------------|--------------------|--------------------------|
-| buffer_load_lds    | Yes                | Yes                      |
-| DME (Data Movement)| No                 | May have HW async copy   |
-| Prefetch hint      | No dedicated insn  | Check ISA for new hints  |
+| Aspect                   | CDNA3 (gfx940/942)       | CDNA4 (gfx950)                    |
+|--------------------------|--------------------------|-----------------------------------|
+| buffer_load_lds          | Yes (1/2/4 dword)        | Yes (same)                        |
+| global_load_lds          | DWORD only               | DWORD + **DWORDX3, DWORDX4** (new)|
+| global_load_lds variants | DWORD                    | UBYTE, SBYTE, USHORT, SSHORT, DWORD, DWORDX3, DWORDX4 |
+| scratch_load_lds         | **No**                   | **New** — scratch→LDS direct      |
+| LDS per CU               | 64 KB                    | **128 KB** (2× double-buffer room)|
+| Cache control on loads   | GLC/SLC/DLC              | **SCOPE/TH** (new encoding)       |
+| Prefetch hints           | No dedicated instruction | TH=HT (high-temporal) hint        |
+
+**Key CDNA4 improvements for async copy**:
+- **global_load_lds** variants bypass VGPRs entirely (data flows global→cache→LDS).
+  New wider variants (DWORDX3, DWORDX4) load 12-16 bytes per lane directly to LDS.
+- **scratch_load_lds** enables scratch→LDS copies without VGPR staging.
+- **128 KB LDS** means double-buffering only uses half the LDS, leaving room for
+  more workgroups or larger tiles.
+- No dedicated DME/DMA unit at the ISA level — global_load_lds serves this role.
 
 ## Sources
 
 - rocWMMA programmer's guide: https://rocm.docs.amd.com/projects/rocWMMA/en/latest/conceptual/programmers-guide.html
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Chapter 5: Vector Memory
+- CDNA4 ISA: `pdfs/cdna4-isa-reference.pdf` — Chapter 5, Chapter 10 (Flat/Global/Scratch)

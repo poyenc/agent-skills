@@ -64,6 +64,27 @@ LDS-staged loads: buffer_load_lds (CDNA3+, saves VGPRs)
 2. **Buffer descriptor setup cost**: 4 SGPRs per descriptor. Multiple buffers eat SGPRs.
 3. **buffer_load_lds constraints**: all lanes write to same LDS region, limited flexibility.
 
+## CDNA3 vs CDNA4 differences
+
+| Aspect                   | CDNA3 (gfx940/942)         | CDNA4 (gfx950)                     |
+|--------------------------|----------------------------|-------------------------------------|
+| buffer_load/store        | Yes                        | Yes (same)                          |
+| global_load/store        | Yes                        | Yes (same addressing)               |
+| flat_load/store          | Yes                        | Yes (same)                          |
+| Cache control bits       | GLC/SLC/DLC on all         | **SCOPE/TH** on all (new encoding)  |
+| buffer_load_lds          | Yes (1/2/4 dword)          | Yes (same)                          |
+| global_load_lds          | DWORD only                 | UBYTE/USHORT/DWORD/DWORDX3/DWORDX4 |
+| scratch_load_lds         | **No**                     | **New** — scratch→LDS direct        |
+
+**Key CDNA4 change for inline assembly**: the GLC/SLC/DLC modifiers on memory
+instructions are replaced with `scope:` and `th:` syntax. Code using
+`global_load_dword ... glc slc` must change to `scope:SCOPE_DEV th:TH_LOAD_NT`
+for gfx950. HIP-level code is unaffected (compiler handles translation).
+
+**New global_load_lds variants** on CDNA4 provide wider direct-to-LDS loads
+(DWORDX3, DWORDX4) and byte/short granularity (UBYTE, USHORT), enabling
+more flexible async copy patterns without VGPR staging.
+
 ## Sources
 
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Ch.5 (Vector Memory), Ch.8 (Flat Memory)

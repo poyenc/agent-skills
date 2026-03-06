@@ -4,7 +4,7 @@
 
 Packed math instructions operate on 2× FP16 or 2× BF16 values packed into a single
 32-bit VGPR, delivering 2× throughput per lane per cycle compared to scalar FP16.
-CDNA4 adds VOPD (dual-issue) for issuing two independent VALU instructions in one cycle.
+CDNA4 adds a large family of packed scaled conversion instructions (v_cvt_scalef32_*).
 
 ## When you care
 
@@ -45,8 +45,12 @@ v_pk_min_f16:  c = min(a, b)
 BF16 equivalents also available on CDNA3+.
 
 CDNA4 additions:
-  v_pk_convert_*: convert between FP8/FP16/BF16 packed formats
-  VOPD: dual-issue two independent VALU ops in one cycle (different from packed)
+  v_cvt_scalef32_pk_*: ~36 new packed conversion instructions with scale factor
+    - Convert between FP4, FP6, FP8, BF8, FP16, BF16, FP32 packed formats
+    - Integrated scale factor (FP32) applied during conversion
+    - Examples: v_cvt_scalef32_pk_fp8_f32, v_cvt_scalef32_pk_f16_fp4
+  v_dot2c_f32_bf16: BF16 dot product in compact VOP2 encoding (new)
+    - CDNA3 only had v_dot2c_f32_f16 (FP16 variant)
 ```
 
 ### Getting compiler to emit packed math
@@ -68,10 +72,26 @@ __half2 packed = aligned_ptr[i];  // loads 2 FP16 in one VGPR
    intermediate computation, those FP32 ops won't be packed. Keep hot paths in FP16.
 2. **Unaligned half2 loads**: misaligned access prevents packing. Ensure arrays
    are 4-byte aligned.
-3. **VOPD is NOT packed math**: VOPD issues 2 independent instructions to different
-   execution units in one cycle. Packed math issues 1 instruction on 2 elements.
+3. **VOPD does not exist on CDNA**: VOPD (dual-issue encoding) is an RDNA3+ feature
+   only. Neither CDNA3 nor CDNA4 support VOPD.
+
+## CDNA3 vs CDNA4 differences
+
+| Aspect                    | CDNA3 (gfx940/942)           | CDNA4 (gfx950)                        |
+|---------------------------|------------------------------|---------------------------------------|
+| v_pk_add/mul/fma_f16      | Yes                          | Yes (identical)                       |
+| v_pk_add/mul/fma_f32      | Yes                          | Yes (identical)                       |
+| v_dot2c_f32_f16 (VOP2)   | Yes                          | Yes                                   |
+| v_dot2c_f32_bf16 (VOP2)  | **No**                       | **New** — BF16 dot product            |
+| v_cvt_scalef32_pk_*      | **No**                       | **New** — ~36 scaled convert instructions |
+| VOPD (dual-issue)         | No                           | No (RDNA-only feature)               |
+
+**CDNA4's key packed-math addition** is the v_cvt_scalef32_pk_* family for converting
+between narrow formats (FP4/FP6/FP8/BF8) and wider formats (FP16/BF16/FP32) with an
+integrated FP32 scale factor. These are essential for MXFP block-scaled inference
+where data is stored in narrow format with per-block exponents.
 
 ## Sources
 
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Chapter 4: Vector ALU (VOP3P encoding)
-- CDNA4 ISA: `pdfs/cdna4-isa-reference.pdf` — Chapter 4
+- CDNA4 ISA: `pdfs/cdna4-isa-reference.pdf` — Chapter 4, Section 6.7.1 (CVT_SCALE)

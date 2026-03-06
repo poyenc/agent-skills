@@ -75,6 +75,26 @@ are more sensitive than FFN layers.
    significant accuracy without careful fine-tuning.
 3. **Metadata overhead**: metadata indices consume VGPRs and bandwidth.
 
+## CDNA3 vs CDNA4 differences
+
+| Aspect                     | CDNA3 (gfx940/942)               | CDNA4 (gfx950)                         |
+|----------------------------|----------------------------------|----------------------------------------|
+| Sparsity pattern           | 2:4 structured                   | 2:4 structured (same)                  |
+| SMFMAC FP16 16×16          | K=32 (v_smfmac_f32_16x16x32_f16)| K=64 (doubled)                         |
+| SMFMAC FP16 32×32          | K=16 (v_smfmac_f32_32x32x16_f16)| K=32 (doubled)                         |
+| SMFMAC BF16                | Same K as FP16                   | Same K as FP16 (doubled)               |
+| SMFMAC FP8 16×16           | K=64                             | K=128 (doubled)                        |
+| SMFMAC FP8 32×32           | K=32                             | K=64 (doubled)                         |
+| SMFMAC INT8 16×16          | K=128                            | K=256 (doubled)                        |
+| SMFMAC INT8 32×32          | K=64                             | K=128 (doubled)                        |
+| SMFMAC F8F6F4 mixed        | **No**                           | **New** — 16×16×128 and 32×32×64       |
+| SMFMAC SCALEF32 (block-scaled)| **No**                        | **New** — all FP8/F8F6F4 with scale    |
+| Total sparse instructions  | ~18                              | ~40+                                   |
+
+**Key CDNA4 improvement**: All sparse MFMA K-dimensions are doubled, matching the
+dense MFMA K-dimension doubling. Additionally, new F8F6F4 mixed-precision and
+SCALEF32 block-scaled sparse variants enable MXFP sparse inference.
+
 ## Sources
 
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Chapter 7 (sparse MFMA variants)

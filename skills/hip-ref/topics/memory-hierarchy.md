@@ -15,26 +15,26 @@ at each level determines how to structure data access for maximum throughput.
 
 ## Key numbers
 
-| Level           | Size (per unit)   | Bandwidth (per GPU)   | Latency     | Notes                    |
-|-----------------|-------------------|-----------------------|-------------|--------------------------|
-| Registers       | 512 VGPRs/SIMD    | N/A                   | 0-1 cycles  | Fastest                  |
-| LDS             | 64 KB/CU          | ~12-16 TB/s total     | ~20 cycles  | Shared within workgroup  |
-| L0 vector cache | 16 KB/CU          | N/A                   | ~few cycles | Read-only (texture path) |
-| L0 scalar cache | 16 KB/CU          | N/A                   | ~few cycles | SMEM loads               |
-| L1 data cache   | 32 KB/CU          | ~6-8 TB/s total       | ~30-50 cy   | Write-through to L2      |
-| L2 cache        | 4 MB/XCD          | ~5-6 TB/s total       | ~100-200 cy | Last-level cache         |
-| L2 total        | 256 MB (8 XCDs)   |                       |             | Acts as Infinity Cache   |
-| HBM             | varies per GPU     | 5.3-8.0 TB/s          | 300-400 cy  | Main memory              |
+| Level           | CDNA3 (per unit)   | CDNA4 (per unit)   | Latency     | Notes                    |
+|-----------------|--------------------|--------------------|-------------|--------------------------|
+| Registers       | 512 VGPR + 512 AGPR| 512 unified VGPR  | 0-1 cycles  | Fastest                  |
+| LDS             | 64 KB/CU           | **128 KB/CU**     | ~20 cycles  | Shared within workgroup  |
+| L0 vector cache | 16 KB/CU           | 16 KB/CU          | ~few cycles | Read-only (texture path) |
+| L0 scalar cache | 16 KB/CU           | 16 KB/CU          | ~few cycles | SMEM loads               |
+| L1 data cache   | 32 KB/CU           | 32 KB/CU          | ~30-50 cy   | Write-through to L2      |
+| L2 cache        | 4 MB/XCD           | 4 MB/XCD          | ~100-200 cy | Last-level cache         |
+| L2 total        | 32 MB (8 XCDs)     | **48 MB (12 XCDs)**| —          | Per-XCD partitioned      |
+| HBM             | varies per GPU     | varies per GPU      | 300-400 cy  | Main memory              |
 
 ### HBM specs by GPU
 
-| GPU    | HBM Type | Capacity | Bandwidth |
-|--------|----------|----------|-----------|
-| MI300X | HBM3     | 192 GB   | 5.3 TB/s  |
-| MI300A | HBM3     | 128 GB   | 5.3 TB/s  |
-| MI325X | HBM3E    | 256 GB   | 6.0 TB/s  |
-| MI350X | HBM3E    | 288 GB   | 8.0 TB/s  |
-| MI355X | HBM3E    | 288 GB   | 8.0 TB/s  |
+| GPU    | Arch  | HBM Type | Capacity | Bandwidth | XCDs | L2 total |
+|--------|-------|----------|----------|-----------|------|----------|
+| MI300X | CDNA3 | HBM3     | 192 GB   | 5.3 TB/s  | 8    | 32 MB    |
+| MI300A | CDNA3 | HBM3     | 128 GB   | 5.3 TB/s  | 8    | 32 MB    |
+| MI325X | CDNA3 | HBM3E    | 256 GB   | 6.0 TB/s  | 8    | 32 MB    |
+| MI350X | CDNA4 | HBM3E    | 288 GB   | 12.2 TB/s | 12   | 48 MB    |
+| MI355X | CDNA4 | HBM3E    | 288 GB   | 12.2 TB/s | 12   | 48 MB    |
 
 ## How to use it
 
@@ -74,6 +74,27 @@ NPS1 mode: all HBM is uniformly addressable, L2 handles routing.
    useful for read reuse.
 3. **Cross-XCD L2 misses**: accessing data from another XCD's L2 is slower. Keep
    data access patterns XCD-local when possible.
+
+## CDNA3 vs CDNA4 differences
+
+| Aspect              | CDNA3 (MI300X/MI325X)     | CDNA4 (MI350X/MI355X)         |
+|---------------------|---------------------------|-------------------------------|
+| XCDs per GPU        | 8                         | **12** (+50%)                 |
+| LDS per CU          | 64 KB                     | **128 KB** (2× increase)      |
+| L2 per XCD          | 4 MB                      | 4 MB (same)                   |
+| L2 total            | 32 MB                     | **48 MB** (+50%)              |
+| HBM type            | HBM3 / HBM3E             | HBM3E                         |
+| HBM bandwidth       | 5.3-6.0 TB/s              | **12.2 TB/s** (~2.3× MI300X) |
+| HBM capacity        | 192-256 GB                | 288 GB                        |
+| Register file       | 512 ArchVGPR + 512 AGPR   | 512 unified                   |
+| Cache control model | GLC/SLC/DLC bits          | **SCOPE + TH** (new)          |
+| global_load_lds     | Not available             | **New** — direct global→LDS   |
+
+**Key architectural shifts**:
+- 50% more XCDs means 50% more CUs and 50% more L2 aggregate cache
+- 2× LDS enables larger tiles and more double-buffering headroom
+- 2.3× HBM bandwidth shifts the compute-vs-memory balance point
+- global_load_lds provides a new async copy path (see async-copy-prefetch topic)
 
 ## Sources
 

@@ -64,6 +64,13 @@ Not useful for:
 4. **Profile first**: swizzle helps only when cache conflicts are the bottleneck.
    Use omniperf to confirm TCC (L2) conflict counts before adding swizzle.
 
+## CDNA3 vs CDNA4 differences
+
+No significant changes to swizzled buffer addressing between CDNA3 and CDNA4.
+The buffer resource descriptor format and swizzle modes are identical. The main
+CDNA4 difference affecting buffer instructions is the replacement of GLC/SLC/DLC
+cache flags with SCOPE/TH fields (see cache-policies topic).
+
 ## Sources
 
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Chapter 5: Vector Memory Buffer Instructions

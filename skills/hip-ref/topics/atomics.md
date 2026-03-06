@@ -86,12 +86,29 @@ float atomicMinFloat(float* addr, float val) {
    Different execution orders give different bit-exact results.
 2. **Global atomics in hot loops**: each global atomic is ~400 cycles. Use local
    reduction (registers → LDS → one global atomic) instead.
-3. **Assuming FP16 atomics exist**: FP16 atomicAdd is NOT natively supported on
-   CDNA3. Must use CAS loop or upconvert to FP32.
+3. **Assuming scalar FP16 atomics exist**: scalar FP16 atomicAdd is NOT natively
+   supported on CDNA3 or CDNA4. Must use packed (pk_add_f16) or upconvert to FP32.
 
 ## CDNA3 vs CDNA4 differences
 
-Both support native FP32/FP64 global atomics. CDNA4 may add FP16 atomics — check ISA.
+| Atomic instruction            | Location | CDNA3 | CDNA4 |
+|-------------------------------|----------|-------|-------|
+| ADD_U32 / SUB_U32             | Global+LDS| Yes  | Yes   |
+| MIN/MAX I32/U32               | Global+LDS| Yes  | Yes   |
+| ADD_F32                       | Global+LDS| Yes  | Yes   |
+| ADD_F64                       | Global+LDS| Yes  | Yes   |
+| MIN/MAX_F32                   | LDS only | Yes   | Yes   |
+| MIN/MAX_F64                   | Global+LDS| Yes  | Yes   |
+| pk_add_f16 (packed 2×FP16)    | Global+LDS| Yes  | Yes   |
+| pk_add_bf16 (packed 2×BF16)   | Global+LDS| Yes  | Yes   |
+| CMPSWAP (CAS)                 | Global+LDS| Yes  | Yes   |
+
+**No new atomic instructions in CDNA4.** The full set of FP32/FP64/packed-FP16/packed-BF16
+atomics is identical between CDNA3 and CDNA4. Scalar FP16 atomicAdd still requires
+either packed operations (pk_add_f16) or CAS loops on both architectures.
+
+**Note**: The encoding of cache control bits on global atomics changes from GLC/SLC/DLC
+(CDNA3) to SCOPE/TH (CDNA4). See cache-policies topic for details.
 
 ## Sources
 

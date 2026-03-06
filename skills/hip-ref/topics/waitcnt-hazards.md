@@ -16,12 +16,15 @@ require manual management.
 
 ## Key counters
 
-| Counter    | Tracks                                  | Range  | Instruction          |
-|------------|-----------------------------------------|--------|----------------------|
-| vmcnt      | Outstanding VMEM loads/stores           | 0-63   | s_waitcnt vmcnt(N)   |
-| lgkmcnt    | Outstanding LDS + SMEM operations       | 0-63   | s_waitcnt lgkmcnt(N) |
-| expcnt     | Outstanding exports/GDS                 | 0-7    | s_waitcnt expcnt(N)  |
-| vscnt      | Outstanding vector stores (CDNA3+)      | 0-63   | s_waitcnt_vscnt null,N |
+| Counter    | Tracks                                  | Range  | Instruction            | Arch        |
+|------------|-----------------------------------------|--------|------------------------|-------------|
+| vmcnt      | Outstanding VMEM loads/stores           | 0-63   | s_waitcnt vmcnt(N)     | CDNA3+CDNA4 |
+| lgkmcnt    | Outstanding LDS + SMEM (+ GDS on CDNA3) | 0-63   | s_waitcnt lgkmcnt(N)   | CDNA3+CDNA4 |
+| expcnt     | Outstanding exports/GDS                 | 0-7    | s_waitcnt expcnt(N)    | CDNA3 only  |
+| vscnt      | Outstanding vector stores               | 0-63   | s_waitcnt_vscnt null,N | CDNA3+CDNA4 |
+
+**CDNA4 change**: expcnt is **unused** (the field exists in encoding but is ignored).
+GDS is removed from CDNA4, so lgkmcnt only tracks LDS + SMEM + messages.
 
 `s_waitcnt vmcnt(N)` means: wait until outstanding VMEM ops ≤ N.
 `s_waitcnt vmcnt(0)` = wait for ALL loads/stores to complete.
@@ -71,13 +74,21 @@ asm volatile("s_barrier" ::: "memory");
 
 ### MFMA hazards
 ```
-After MFMA, accumulator (AGPR) results need time to be ready:
-  v_mfma_f32_32x32x8_f16 a[0:15], ...  // 64 cycles
-  // Cannot read a[0:15] until MFMA completes
-  // Compiler inserts s_nop or arranges other instructions to fill gap
+After MFMA, accumulator results need time to be ready:
 
-In inline asm: ensure ≥64 instructions between MFMA issue and
-v_accvgpr_read, or use s_waitcnt for MFMA completion.
+CDNA3:
+  v_mfma_f32_32x32x8_f16 a[0:15], ...  // 64 cycles, result in AGPRs
+  // Cannot read a[0:15] until MFMA completes
+  // Need v_accvgpr_read to move AGPR → VGPR (1 VALU cycle each)
+
+CDNA4:
+  v_mfma_f32_32x32x16_f16 v[0:15], ... // result directly in VGPRs (unified file)
+  // No v_accvgpr_read needed, but still must wait for MFMA completion
+  // Permlane swap hazard: 4 wait states after V_CMPX writing EXEC,
+  //   2 wait states if prior VALU writes the VGPR read by permlane
+
+In inline asm: ensure sufficient instructions between MFMA issue and
+result consumption, or use s_nop / interleave independent work.
 ```
 
 ### Memory fences (ordering, not waiting)
@@ -101,6 +112,22 @@ __threadfence();        // device scope — orders writes visible to all CUs
    BEFORE `s_barrier`.
 5. **vscnt is separate from vmcnt (CDNA3+)**: vector stores have their own counter.
    `s_waitcnt vmcnt(0)` does NOT wait for stores. Use `s_waitcnt_vscnt null, 0`.
+
+## CDNA3 vs CDNA4 differences
+
+| Aspect              | CDNA3 (gfx940/942)               | CDNA4 (gfx950)                     |
+|---------------------|-----------------------------------|------------------------------------|
+| vmcnt               | VMEM loads/stores                 | Same                               |
+| lgkmcnt             | LDS + GDS + SMEM + messages       | LDS + SMEM + messages (no GDS)     |
+| expcnt              | Exports + GDS (0-7)               | **Unused** (field ignored)         |
+| vscnt               | Vector stores (0-63)              | Same                               |
+| GDS operations      | Tracked by lgkmcnt + expcnt       | **GDS removed from CDNA4**         |
+| MFMA accum hazard   | Must wait for AGPR write-back     | Same wait, but unified VGPR file   |
+| Permlane hazards    | N/A (no permlane instructions)    | 4 wait states after V_CMPX → EXEC; 2 wait states after VALU writes src VGPR |
+
+**Migration note**: Inline assembly using `s_waitcnt expcnt(N)` will still assemble for
+gfx950 but has no effect. Code relying on GDS synchronization must be redesigned — GDS
+and GWS (Global Wave Sync) are entirely removed from CDNA4.
 
 ## Sources
 

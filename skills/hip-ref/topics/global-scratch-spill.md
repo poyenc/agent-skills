@@ -71,7 +71,23 @@ better algorithmic choices, keep it. But usually spill-free wins.
 3. **Inline asm hiding spills**: compiler can't optimize register allocation around
    inline asm blocks, leading to unnecessary spills.
 
+## CDNA3 vs CDNA4 differences
+
+| Aspect                  | CDNA3 (gfx940/942)            | CDNA4 (gfx950)                     |
+|-------------------------|-------------------------------|-------------------------------------|
+| VGPR pool               | 512 ArchVGPR + 512 AGPR       | 512 unified (shared pool)           |
+| AGPR spill pressure     | AGPRs in separate file         | AGPRs consume from VGPR pool        |
+| scratch_load_lds        | **No**                        | **New** — scratch→LDS direct copy   |
+| Spill path              | scratch→L1→L2→HBM             | Same path                           |
+
+**CDNA4 spill implications**: With unified VGPR+AGPR, kernels using many AGPRs
+(MFMA accumulators) have less VGPR headroom before spilling. A kernel using 128
+ArchVGPRs + 128 AGPRs on CDNA3 (separate files, no spill) may approach the 512
+total on CDNA4 (256 used). Adding temporaries pushes toward spills more easily.
+Mitigate by reducing tile sizes or using the new scratch_load_lds for staging.
+
 ## Sources
 
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Chapter 8: Flat/Scratch Memory
+- CDNA4 ISA: `pdfs/cdna4-isa-reference.pdf` — Chapter 8
 - AMD Lab Notes: https://gpuopen.com/learn/amd-lab-notes/amd-lab-notes-register-pressure-readme/

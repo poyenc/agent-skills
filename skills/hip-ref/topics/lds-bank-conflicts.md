@@ -2,7 +2,7 @@
 
 ## What it is
 
-LDS (Local Data Share) is 64KB per CU, organized as 32 banks × 4 bytes per bank.
+LDS (Local Data Share) is 64KB per CU on CDNA3 (128KB on CDNA4), organized as 32 banks × 4 bytes per bank.
 A bank conflict occurs when 2+ lanes in the same cycle access different addresses
 mapping to the same bank. Conflicts serialize and can 2-32× degrade LDS throughput.
 
@@ -15,14 +15,15 @@ mapping to the same bank. Conflicts serialize and can 2-32× degrade LDS through
 
 ## Key numbers
 
-| Property        | CDNA3           | CDNA4           |
-|-----------------|-----------------|-----------------|
-| LDS per CU      | 64 KB           | 64 KB           |
-| Banks            | 32              | 32              |
-| Bank width       | 4 bytes         | 4 bytes         |
+| Property        | CDNA3           | CDNA4            |
+|-----------------|-----------------|------------------|
+| LDS per CU      | 64 KB           | **128 KB**       |
+| Banks            | 32              | 32               |
+| Bank width       | 4 bytes         | 4 bytes          |
 | Bank mapping     | (addr/4) % 32   | (addr/4) % 32   |
 | Broadcast        | Same-addr = free | Same-addr = free|
-| Max conflict     | 32-way          | 32-way          |
+| Max conflict     | 32-way          | 32-way           |
+| ds_read_tr_*    | B64, B128       | B64, B128 + **B64_TR_B4/B8/B16, B96_TR_B6** |
 
 ## How to use it
 
@@ -93,10 +94,30 @@ For sequential access: prefer ds_read_b128 (fewer instructions, same BW).
 
 ## CDNA3 vs CDNA4 differences
 
-No known changes. Both have 32 banks × 4B. Same conflict rules apply.
+| Aspect               | CDNA3 (gfx940/942)          | CDNA4 (gfx950)                      |
+|-----------------------|-----------------------------|-------------------------------------|
+| LDS per CU            | 64 KB                      | **128 KB** (2× increase)            |
+| Bank count × width    | 32 × 4B                    | 32 × 4B (same)                      |
+| Bank conflict rules   | (addr/4) % 32              | Same                                |
+| Transpose reads       | ds_read_tr_b64, ds_read_tr_b128 | Same + **4 new ds_read_*_tr_* variants** |
+| GDS / GWS             | Present                    | **Removed**                         |
+
+**CDNA4 new LDS instructions** (transpose reads for MFMA data staging):
+- `ds_read_b64_tr_b4` — read 64B with 4-bit element transpose
+- `ds_read_b96_tr_b6` — read 96B with 6-bit element transpose
+- `ds_read_b64_tr_b8` — read 64B with 8-bit element transpose
+- `ds_read_b64_tr_b16` — read 64B with 16-bit element transpose
+
+These enable direct transposed reads from LDS into VGPRs in the layout expected
+by MFMA, avoiding extra shuffle/permute instructions. Particularly useful for
+narrow-format MFMA (FP4/FP6/FP8) where data layout transformations are expensive.
+
+**128 KB LDS** means CDNA4 can hold larger tiles, enabling more data reuse and
+relaxing LDS-limited occupancy constraints (see occupancy-register-pressure topic).
 
 ## Sources
 
 - CK LDS bank conflicts: https://rocm.docs.amd.com/projects/composable_kernel/en/latest/conceptual/ck_tile/hardware/lds_bank_conflicts.html
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Chapter 6: Data Share Operations
+- CDNA4 ISA: `pdfs/cdna4-isa-reference.pdf` — Chapter 11 (LDS), Section 11.4 (MFMA Transpose Load)
 - HIP hardware implementation: https://rocm.docs.amd.com/projects/HIP/en/latest/understand/hardware_implementation.html

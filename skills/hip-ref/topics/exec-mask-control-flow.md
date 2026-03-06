@@ -99,6 +99,22 @@ for (int i = 0; i < N; i++) {
 3. **__syncthreads in divergent code**: calling __syncthreads() with divergent
    EXEC mask is UNDEFINED BEHAVIOR. All lanes must reach the barrier.
 
+## CDNA3 vs CDNA4 differences
+
+| Aspect                    | CDNA3 (gfx940/942)       | CDNA4 (gfx950)                    |
+|---------------------------|--------------------------|-----------------------------------|
+| EXEC mask width           | 64-bit (wave64)          | 64-bit (same)                     |
+| s_and_saveexec_b64 etc.   | Yes                      | Yes (identical set)               |
+| v_cndmask_b32             | Yes                      | Yes                               |
+| s_set_gpr_idx_mode        | Available                | **Removed**                       |
+| s_set_gpr_idx_idx         | Available                | **Removed**                       |
+| GDS-related control flow  | Available (GWS)          | **Removed** (no GDS/GWS on CDNA4)|
+
+**No major changes** to EXEC mask or divergent branch handling between CDNA3 and CDNA4.
+The core control flow mechanism (saveexec/restore pattern) is identical. The only
+removals are `s_set_gpr_idx_*` (VGPR indexing mode) and GDS/GWS-related synchronization.
+
 ## Sources
 
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf` — Ch.3 (Scalar ALU), Ch.4 (Vector ALU)
+- CDNA4 ISA: `pdfs/cdna4-isa-reference.pdf` — Ch.3, Ch.4

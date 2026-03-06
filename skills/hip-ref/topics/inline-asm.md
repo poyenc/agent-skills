@@ -81,8 +81,36 @@ asm volatile("v_readfirstlane_b32 %0, %1"
 5. **No s_waitcnt → undefined behavior**: using VMEM load result without waitcnt
    is a data hazard. Hardware does NOT interlock.
 
+## CDNA3 vs CDNA4 differences
+
+| Aspect                    | CDNA3 (gfx940/942)          | CDNA4 (gfx950)                     |
+|---------------------------|-----------------------------|------------------------------------|
+| Cache flag syntax         | `glc slc dlc`               | **`scope:X th:Y`** (new syntax)    |
+| AGPR constraint `"a"`     | Maps to separate AGPR file  | Maps to unified VGPR file          |
+| v_accvgpr_read/write      | Required (1 VALU cycle)     | No-op (same physical file)         |
+| s_set_gpr_idx_mode        | Available                   | **Removed** — will not assemble    |
+| s_waitcnt expcnt(N)       | Functional                  | **Ignored** (expcnt unused)        |
+| New instructions          | —                           | v_permlane16/32_swap_b32, v_prng_b32, v_cvt_scalef32_*, ds_read_*_tr_* |
+| MFMA encoding             | VOP3P-MAI                   | Extended VOP3P-MAI with SCALEF32   |
+
+**Inline asm migration for gfx950**:
+```cpp
+// CDNA3 cache-flagged load:
+asm volatile("global_load_dword %0, %1, off glc slc"
+    : "=v"(val) : "v"(addr) : "memory");
+
+// CDNA4 equivalent:
+asm volatile("global_load_dword %0, %1, off scope:SCOPE_DEV th:TH_LOAD_NT"
+    : "=v"(val) : "v"(addr) : "memory");
+
+// CDNA4 permlane swap (new):
+asm volatile("v_permlane32_swap_b32 %0, %1"
+    : "+v"(vdst) : "v"(src0));
+```
+
 ## Sources
 
 - HIP kernel language: https://rocm.docs.amd.com/projects/HIP/en/develop/reference/kernel_language.html
 - Art of AMDGCN assembly: https://gpuopen.com/learn/amdgcn-assembly/
 - CDNA3 ISA: `pdfs/cdna3-isa-reference.pdf`
+- CDNA4 ISA: `pdfs/cdna4-isa-reference.pdf`

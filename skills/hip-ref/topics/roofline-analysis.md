@@ -18,12 +18,16 @@ arithmetic intensity needed to be compute-bound.
 
 ### Ridge points (FLOP/byte)
 
-| Type     | MI300X          | MI350X          |
-|----------|-----------------|-----------------|
-| FP16 MFMA| 1307/5.3 = 247  | 2310/8.0 = 289  |
-| FP8 MFMA | 2615/5.3 = 493  | 4614/8.0 = 577  |
-| FP4 MFMA | N/A             | 9228/8.0 = 1154 |
-| FP32 VALU| 163/5.3 = 31    | 144/8.0 = 18    |
+| Type     | MI300X (CDNA3)       | MI350X (CDNA4)        |
+|----------|----------------------|-----------------------|
+| FP16 MFMA| 1307/5.3 = 247       | 2310/12.2 = 189       |
+| FP8 MFMA | 2615/5.3 = 493       | 4614/12.2 = 378       |
+| FP4 MFMA | N/A                  | 9228/12.2 = 756       |
+| FP32 VALU| 163/5.3 = 31         | 144/12.2 = 12         |
+
+Note: MI350X's 12.2 TB/s HBM bandwidth lowers ridge points vs MI300X despite
+higher TFLOPS. This makes it EASIER to be memory-bound on CDNA4 — HBM bandwidth
+grows slower than compute, so data reuse becomes even more critical.
 
 Higher ridge point = harder to be compute-bound = more data reuse needed.
 
@@ -79,6 +83,21 @@ If both low → latency-bound (increase occupancy or pipeline overlap)
    Total kernel is a mix of compute-bound GEMM + memory-bound softmax.
 3. **Peak BW is HBM, not L2**: if your data fits in L2, effective bandwidth is
    higher → ridge point moves up → harder to be compute-bound.
+
+## CDNA3 vs CDNA4 differences
+
+| Aspect                | CDNA3 (MI300X)    | CDNA4 (MI350X)         |
+|-----------------------|-------------------|------------------------|
+| FP16 MFMA TFLOPS      | 1,307            | 2,310 (1.8×)           |
+| HBM bandwidth          | 5.3 TB/s         | 12.2 TB/s (2.3×)       |
+| FP16 ridge point       | 247 FLOP/B       | 189 FLOP/B (lower!)    |
+| FP64 matrix TFLOPS     | 163              | 72 (half rate)         |
+| FP4 MFMA TFLOPS        | N/A              | 9,228                  |
+
+**Key insight**: CDNA4 has lower FP16/FP8 ridge points than CDNA3 because HBM
+bandwidth grew faster (2.3×) than compute (1.8×). Kernels that were compute-bound
+on MI300X may become **memory-bound** on MI350X at the same tile sizes. Increase
+tile sizes or data reuse to compensate.
 
 ## Sources
 
