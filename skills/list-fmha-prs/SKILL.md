@@ -13,6 +13,10 @@ description: >
 
 Find and present all open pull requests in `ROCm/rocm-libraries` labeled `"project: composablekernel"` that primarily modify fused multi-head attention (FMHA) kernel code.
 
+## Prerequisites
+
+- **`gh` CLI**: This skill requires the [GitHub CLI](https://cli.github.com/) to be installed and authenticated. All PR fetching, file listing, and diff inspection is done via `gh api`, `gh pr view`, and `gh pr diff` bash commands.
+
 ## Why this skill exists
 
 PR titles in this repo are often vague or misleading — a PR titled "enable sequence paddings for all types" might actually be adding MX FP8/FP4 support to the FMHA kernel. Titles alone are not reliable for filtering. This skill reads diffs and changed file paths to determine the real focus of each PR.
@@ -57,7 +61,7 @@ For **every** PR (both buckets), verify whether FMHA is the primary focus by exa
 
 ### Subagent prompt template
 
-For each PR, spawn a Task subagent (type: `general-purpose`) with this prompt:
+For each PR, spawn a Task subagent (type: `general-purpose`) with this prompt. The required `gh` commands (`gh pr view`, `gh pr diff`, `gh api repos/*/pulls?*`) must be pre-approved in the permissions allow list (either project-level `.claude/settings.json` or user-level `~/.claude/settings.json`) so that background subagents can run them without interactive approval.
 
 ```
 Determine whether PR #<NUMBER> in ROCm/rocm-libraries is primarily focused on FMHA (fused multi-head attention) kernel code.
