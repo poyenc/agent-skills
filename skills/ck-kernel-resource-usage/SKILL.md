@@ -16,17 +16,17 @@ description: >
 # Kernel Resource Analysis
 
 Build a CK (Composable Kernel) target with LLVM's `-Rpass-analysis=kernel-resource-usage`
-flag, parse the build log, and report kernels with register spills or non-zero scratch size.
+flag, parse the build log, and report kernel resource usage (registers, occupancy, spills, scratch, LDS).
 
 ## Required inputs
 
 | Input | Description | Example |
 |-------|-------------|---------|
-| **container** | Docker container name | `spill_check_poyechen` |
+| **container** | Docker container name | `ck_resource_poyechen` |
 | **target** | CMake build target name | `tile_example_fmha_fwd` |
 
 If the user doesn't provide a container name, default to
-`spill_check_<username>` (e.g., `spill_check_poyechen`), where `<username>`
+`ck_resource_<username>` (e.g., `ck_resource_poyechen`), where `<username>`
 comes from `$USER`. This avoids collision on shared machines and clearly
 identifies the container's purpose.
 
