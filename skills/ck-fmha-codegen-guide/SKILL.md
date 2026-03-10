@@ -467,6 +467,25 @@ consistency.
 | **Reduction** | **X%** | ... | ... | ... |
 ```
 
+### Step 6: Save the guide
+
+Ask the user where they'd like to save the guide. Suggest a default of:
+
+```
+<ck-root>/docs/<api>-kernel-selection-guide.md
+```
+
+If the user provides a path, save there. If they decline, skip saving.
+
+Include a header line with the generation date, source file, targets,
+and mask mode used, so readers know what parameters produced the counts:
+
+```markdown
+Generated: YYYY-MM-DD | Source: `codegen/ops/fmha_<api>.py` | Targets: <targets> | Mask mode: <mask_impl>
+```
+
+Create parent directories if they don't exist.
+
 ---
 
 ## fnmatch limitations
