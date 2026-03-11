@@ -29,7 +29,7 @@ Use `gh api` to fetch all open PRs with the label. The GitHub REST API paginates
 PAGE=1
 while true; do
   RESULT=$(gh api "repos/ROCm/rocm-libraries/pulls?state=open&per_page=100&page=$PAGE" \
-    --jq '.[] | select(.labels[]?.name == "project: composablekernel") | {number, title, user: .user.login, url: .html_url}')
+    --jq '.[] | select(.labels[]?.name == "project: composablekernel") | {number, title, user: .user.login, url: .html_url, created_at}')
   [ -z "$RESULT" ] && break
   echo "$RESULT"
   PAGE=$((PAGE + 1))
@@ -102,14 +102,16 @@ A PR is **NOT** FMHA-focused if it only:
 
 ## Step 4: Present results
 
-Compile the verified FMHA PRs into a markdown table, sorted by PR number descending (newest first):
+Compile the verified FMHA PRs into a markdown table, sorted by creation date descending (newest first):
 
 ```markdown
-| # | PR | Author | Summary |
-|---|-----|--------|---------|
-| 1 | [#NNNN](url) — **Title** | author | Summary of FMHA changes |
-| 2 | ... | ... | ... |
+| # | PR | Author | Age | Summary |
+|---|-----|--------|-----|---------|
+| 1 | [#NNNN](url) — **Title** | author | 3d | Summary of FMHA changes |
+| 2 | ... | ... | 2w | ... |
 ```
+
+The "Age" column shows how long ago the PR was created, computed from `created_at`. Use the largest fitting unit: `Xd` (days) for < 14 days, `Xw` (weeks) for < 8 weeks, `Xmo` (months) otherwise.
 
 After the table, add a brief "Excluded" section listing any PRs that had FMHA keywords in the title but were determined NOT to be FMHA-focused after diff inspection, with a short reason why.
 
