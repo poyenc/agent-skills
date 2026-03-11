@@ -1,5 +1,5 @@
 ---
-name: list-fmha-prs
+name: ck-list-fmha-prs
 description: >
   List open pull requests from ROCm/rocm-libraries that are labeled "project: composablekernel"
   and focused on fused multi-head attention (FMHA) kernels. Use this skill whenever the user asks

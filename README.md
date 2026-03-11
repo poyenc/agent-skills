@@ -9,7 +9,7 @@ A collection of Claude Code agent skills for specialized tasks.
 | **[hip-ref](skills/hip-ref/)** | AMD HIP GPU kernel developer reference for CDNA3 and CDNA4 architectures. Covers MFMA instructions, register layout, LDS, occupancy, profiling, and more. |
 | **[ck-kernel-resource-usage](skills/ck-kernel-resource-usage/)** | Analyze GPU kernel resource usage (VGPRs, AGPRs, SGPRs, occupancy, scratch memory, LDS, register spills) by building a CK target with `-Rpass-analysis=kernel-resource-usage` and parsing the build log. |
 | **[ck-fmha-codegen-guide](skills/ck-fmha-codegen-guide/)** | Generate comprehensive FMHA kernel selection guides by dynamically analyzing CK codegen source code. Produces filename structure docs, field references, minimal kernel sets, and filter commands for `generate.py`. |
-| **[list-fmha-prs](skills/list-fmha-prs/)** | List open pull requests from ROCm/rocm-libraries focused on fused multi-head attention (FMHA) kernels. |
+| **[ck-list-fmha-prs](skills/ck-list-fmha-prs/)** | List open pull requests from ROCm/rocm-libraries focused on fused multi-head attention (FMHA) kernels. |
 
 ## Usage
 
