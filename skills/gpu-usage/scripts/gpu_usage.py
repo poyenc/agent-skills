@@ -190,155 +190,122 @@ def _detect_containers(
 ) -> Dict[int, Tuple[str, str]]:
     """Return {pid: (resolved_user, container_name)}.
 
-    Only attempts detection for root-owned processes.  Returns ("-", "-")
-    for non-root processes."""
+    Uses /proc/<pid>/cgroup to identify which container a process belongs to,
+    then maps container ID to name via ``docker inspect``.  For the host user,
+    looks up who ran ``docker exec/run`` into that container."""
     has_docker = shutil.which("docker") is not None
     root_pids = {p for p, (u, _, __) in proc_details.items() if u == "root"}
 
     if not root_pids or not has_docker:
         return {p: (u, "-") for p, (u, _, __) in proc_details.items()}
 
-    result: Dict[int, Tuple[str, str]] = {}
+    # Build container-id-to-name map from running containers
+    cid_to_name = _get_container_id_map()
 
-    # Cache: command_keyword -> (host_user, container_name)
-    cache: Dict[str, Tuple[str, str]] = {}
+    result: Dict[int, Tuple[str, str]] = {}
+    # Cache: container_name -> host_user
+    user_cache: Dict[str, str] = {}
 
     for pid, (user, _, args) in proc_details.items():
         if pid not in root_pids:
             result[pid] = (user, "-")
             continue
 
-        # Extract a keyword from the command for pgrep matching
-        keyword = _extract_keyword(args)
-        if keyword and keyword in cache:
-            host_user, container = cache[keyword]
-            result[pid] = (host_user, container)
+        container_id = _get_container_id_from_cgroup(pid)
+        if not container_id:
+            result[pid] = (user, "-")
             continue
 
-        host_user, container = _resolve_container(keyword)
-        if keyword:
-            cache[keyword] = (host_user, container)
-        result[pid] = (host_user, container)
+        # Match the cgroup container ID against known containers
+        container_name = _match_container_id(container_id, cid_to_name)
+        if not container_name:
+            result[pid] = ("(container)", container_id[:12])
+            continue
+
+        # Resolve host user who ran docker exec/run into this container
+        if container_name in user_cache:
+            host_user = user_cache[container_name]
+        else:
+            host_user = _resolve_container_user(container_name)
+            user_cache[container_name] = host_user
+
+        result[pid] = (host_user, container_name)
 
     return result
 
 
-def _extract_keyword(args: str) -> str:
-    """Pick a useful keyword from a command line for pgrep matching."""
-    if args == "(exited)":
-        return ""
-    # Take the basename of the first token that looks like a command/script
-    parts = args.split()
-    for part in parts:
-        # Skip interpreters
-        if part in ("python", "python3", "bash", "sh"):
-            continue
-        # Skip flags
-        if part.startswith("-"):
-            continue
-        # Use basename
-        base = part.rsplit("/", 1)[-1]
-        if base:
-            return base
-    return parts[0].rsplit("/", 1)[-1] if parts else ""
+def _get_container_id_from_cgroup(pid: int) -> str:
+    """Read /proc/<pid>/cgroup to extract the docker container ID."""
+    try:
+        with open(f"/proc/{pid}/cgroup", "r") as f:
+            for line in f:
+                # cgroup v2: 0::/system.slice/docker-<id>.scope
+                # cgroup v1: N:name=systemd:/docker/<id>
+                m = re.search(r"docker-([0-9a-f]{64})\.scope", line)
+                if m:
+                    return m.group(1)
+                m = re.search(r"/docker/([0-9a-f]{64})", line)
+                if m:
+                    return m.group(1)
+    except (OSError, PermissionError):
+        pass
+    return ""
 
 
-def _resolve_container(keyword: str) -> Tuple[str, str]:
-    """Try to find the container name and host user for a root GPU process."""
-    if keyword:
-        pgrep_out, rc = _run(["pgrep", "-a", "-f", f"docker.*(exec|run).*{re.escape(keyword)}"])
-        if rc == 0 and pgrep_out.strip():
-            return _parse_docker_pgrep(pgrep_out)
-
-    # Fallback: list containers and try matching
-    docker_out, rc = _run(["docker", "ps", "--no-trunc", "--format", "{{.ID}} {{.Names}}"])
-    if rc != 0 or not docker_out.strip():
-        return ("(container)", "-")
-
-    for line in docker_out.strip().splitlines():
+def _get_container_id_map() -> Dict[str, str]:
+    """Return {full_container_id: container_name} for all running containers."""
+    out, rc = _run(["docker", "ps", "--no-trunc", "--format", "{{.ID}} {{.Names}}"])
+    if rc != 0 or not out.strip():
+        return {}
+    result: Dict[str, str] = {}
+    for line in out.strip().splitlines():
         parts = line.split(None, 1)
-        if len(parts) < 2:
-            continue
-        container_name = parts[1]
-        # Skip infra containers
-        if any(infra in container_name.lower() for infra in ("exporter", "monitor", "grafana", "prometheus")):
-            continue
-        if keyword:
-            pgrep_out2, rc2 = _run(["pgrep", "-a", "-f", f"docker.*(exec|run).*{re.escape(container_name)}"])
-            if rc2 == 0 and pgrep_out2.strip():
-                user, _ = _parse_docker_pgrep(pgrep_out2)
-                return user, container_name
-
-    return ("(container)", "-")
+        if len(parts) == 2:
+            result[parts[0]] = parts[1]
+    return result
 
 
-def _parse_docker_pgrep(pgrep_out: str) -> Tuple[str, str]:
-    """Extract host user and container name from pgrep output matching docker
-    exec/run commands."""
+def _match_container_id(cgroup_id: str, cid_to_name: Dict[str, str]) -> str:
+    """Match a container ID from cgroup against the running container map."""
+    # Try exact match first
+    if cgroup_id in cid_to_name:
+        return cid_to_name[cgroup_id]
+    # Try prefix match (cgroup may have full ID, docker ps may show short)
+    for cid, name in cid_to_name.items():
+        if cid.startswith(cgroup_id) or cgroup_id.startswith(cid):
+            return name
+    return ""
+
+
+def _resolve_container_user(container_name: str) -> str:
+    """Find the host user who ran docker exec/run for a given container."""
+    pgrep_out, rc = _run(
+        ["pgrep", "-a", "-f", f"docker.*(exec|run).*{re.escape(container_name)}"]
+    )
+    if rc != 0 or not pgrep_out.strip():
+        return "(container)"
+
     pids: List[int] = []
-    container_name = "-"
-    has_run = False
-    has_exec = False
-
     for line in pgrep_out.strip().splitlines():
         parts = line.split(None, 1)
-        if len(parts) < 2:
-            continue
-        try:
-            pids.append(int(parts[0]))
-        except ValueError:
-            continue
-        cmdline = parts[1]
-        # Try to extract container name from the command
-        name = _extract_container_name(cmdline)
-        if name:
-            container_name = name
-        if "docker run" in cmdline:
-            has_run = True
-        if "docker exec" in cmdline:
-            has_exec = True
+        if len(parts) >= 2:
+            try:
+                pids.append(int(parts[0]))
+            except ValueError:
+                pass
 
     if not pids:
-        return "(container)", container_name if container_name != "-" else "-"
+        return "(container)"
 
-    # Resolve host user from the pgrep PIDs
     pid_str = ",".join(str(p) for p in pids)
     user_out, _ = _run(["ps", "-o", "user", "--no-headers", "-p", pid_str])
     users = list(dict.fromkeys(u.strip() for u in user_out.splitlines() if u.strip()))
 
-    if len(users) == 1:
-        return users[0], container_name
-    if len(users) > 1:
-        # Prefer exec user (active workload user) over run user (container owner)
-        # but this heuristic is simple — just pick the non-root user
-        non_root = [u for u in users if u != "root"]
-        return non_root[0] if non_root else users[0], container_name
-
-    return "(container)", container_name
-
-
-def _extract_container_name(cmdline: str) -> str:
-    """Try to extract a container name from a docker exec/run command line."""
-    # docker exec [options] <container> <command>
-    # docker run [options] --name <name> ...
-    parts = cmdline.split()
-    try:
-        idx = parts.index("exec") if "exec" in parts else -1
-        if idx >= 0:
-            # Skip options (start with -)
-            for i in range(idx + 1, len(parts)):
-                if not parts[i].startswith("-"):
-                    return parts[i]
-
-        idx = parts.index("run") if "run" in parts else -1
-        if idx >= 0:
-            # Look for --name
-            for i in range(idx + 1, len(parts)):
-                if parts[i] == "--name" and i + 1 < len(parts):
-                    return parts[i + 1]
-    except (ValueError, IndexError):
-        pass
-    return ""
+    if not users:
+        return "(container)"
+    # Prefer non-root user (the actual host user)
+    non_root = [u for u in users if u != "root"]
+    return non_root[0] if non_root else users[0]
 
 
 # ---------------------------------------------------------------------------
