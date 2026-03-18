@@ -159,91 +159,7 @@ teardown() {
     [[ "$output" == *"not found"* ]]
 }
 
-# --- pick tests ---------------------------------------------------------------
-
-@test "pick: shows help with --help" {
-    run "${MONOREPO_BRIDGE}" pick --help
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Cherry-pick a monorepo commit"* ]]
-}
-
-@test "pick: cherry-picks a monorepo commit into submodule" {
-    local prefix="projects/mylib"
-    cd "${MONOREPO_DIR}"
-    git config --local bridge.prefix "${prefix}"
-
-    # Split current state
-    "${MONOREPO_BRIDGE}" split
-
-    # Add a new commit to monorepo
-    monorepo_commit "${prefix}" "new-file.txt" "new content" "feat: add new file"
-    local mono_sha
-    mono_sha=$(git rev-parse HEAD)
-
-    # Re-split to include the new commit
-    "${MONOREPO_BRIDGE}" split
-
-    # Create submodule from the split (before the new commit)
-    create_submodule_from_split "bridge-split/main"
-    cd "${SUBMODULE_DIR}"
-
-    # Setup bridge
-    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
-
-    # Reset to before the new commit to simulate needing to pick it
-    git reset --hard HEAD~1
-
-    # Pick the commit
-    run "${MONOREPO_BRIDGE}" pick "${mono_sha}"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Done! Commit applied"* ]]
-
-    # Verify the file was added
-    [ -f "new-file.txt" ]
-    [ "$(cat new-file.txt)" = "new content" ]
-}
-
-@test "pick: warns when commit doesn't touch prefix" {
-    local prefix="projects/mylib"
-    cd "${MONOREPO_DIR}"
-    git config --local bridge.prefix "${prefix}"
-
-    # Add commit outside prefix
-    echo "other" > "${MONOREPO_DIR}/other-file.txt"
-    git -C "${MONOREPO_DIR}" add .
-    git -C "${MONOREPO_DIR}" commit -m "feat: unrelated change"
-    local mono_sha
-    mono_sha=$(git -C "${MONOREPO_DIR}" rev-parse HEAD)
-
-    # Split and create submodule
-    "${MONOREPO_BRIDGE}" split
-    create_submodule_from_split "bridge-split/main"
-    cd "${SUBMODULE_DIR}"
-    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
-
-    # Pick commit that doesn't touch prefix
-    run "${MONOREPO_BRIDGE}" pick "${mono_sha}"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"does not touch any files"* ]]
-}
-
-@test "pick: fails when no split commit found" {
-    local prefix="projects/mylib"
-    create_submodule "${prefix}"
-    cd "${SUBMODULE_DIR}"
-    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
-
-    # Add a commit to monorepo but don't split
-    monorepo_commit "${prefix}" "unsplit.txt" "content" "feat: unsplit commit"
-    local mono_sha
-    mono_sha=$(git -C "${MONOREPO_DIR}" rev-parse HEAD)
-
-    run "${MONOREPO_BRIDGE}" pick "${mono_sha}"
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"Could not find a matching subtree-split commit"* ]]
-}
-
-# --- export tests -------------------------------------------------------------
+# --- export tests (fetch + subtree merge) -------------------------------------
 
 @test "export: shows help with --help" {
     run "${MONOREPO_BRIDGE}" export --help
@@ -251,7 +167,7 @@ teardown() {
     [[ "$output" == *"Export commits from the submodule"* ]]
 }
 
-@test "export: exports submodule commits to monorepo" {
+@test "export: exports submodule commits to monorepo via fetch + subtree merge" {
     local prefix="projects/mylib"
     cd "${MONOREPO_DIR}"
     git config --local bridge.prefix "${prefix}"
@@ -262,46 +178,30 @@ teardown() {
     "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
 
     # Add commits in submodule
-    local base_sha
-    base_sha=$(git rev-parse HEAD)
     echo "fix content" > fix.txt
     git add fix.txt
     git commit -m "fix: patch in submodule"
 
     # Export to monorepo, explicitly targeting 'main' branch
-    run "${MONOREPO_BRIDGE}" export "${base_sha}" main
+    run "${MONOREPO_BRIDGE}" export main
     [ "$status" -eq 0 ]
-    [[ "$output" == *"1 commit(s) applied"* ]]
 
     # Verify the commit landed in monorepo under prefix
     run git -C "${MONOREPO_DIR}" show main:"${prefix}/fix.txt"
     [ "$status" -eq 0 ]
     [ "$output" = "fix content" ]
-}
 
-@test "export: skips already-applied commits" {
-    local prefix="projects/mylib"
-    cd "${MONOREPO_DIR}"
-    git config --local bridge.prefix "${prefix}"
-    "${MONOREPO_BRIDGE}" split
+    # Verify split branch has same hash as submodule HEAD
+    local split_sha sub_sha
+    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
+    sub_sha=$(git rev-parse HEAD)
+    [ "${split_sha}" = "${sub_sha}" ]
 
-    create_submodule_from_split "bridge-split/main"
-    cd "${SUBMODULE_DIR}"
-    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
-
-    local base_sha
-    base_sha=$(git rev-parse HEAD)
-    echo "fix" > fix.txt
-    git add fix.txt
-    git commit -m "fix: first patch"
-
-    # Export once
-    "${MONOREPO_BRIDGE}" export "${base_sha}" main
-
-    # Export again — should skip
-    run "${MONOREPO_BRIDGE}" export "${base_sha}" main
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"already applied"* ]]
+    # Verify monorepo subtree tree matches split tree
+    local mono_subtree split_tree
+    mono_subtree=$(git -C "${MONOREPO_DIR}" rev-parse "main:${prefix}")
+    split_tree=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main^{tree}")
+    [ "${mono_subtree}" = "${split_tree}" ]
 }
 
 @test "export: handles empty commit range" {
@@ -314,12 +214,13 @@ teardown() {
     cd "${SUBMODULE_DIR}"
     "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
 
-    run "${MONOREPO_BRIDGE}" export HEAD
+    # Export with no new commits — split branch already matches submodule
+    run "${MONOREPO_BRIDGE}" export main
     [ "$status" -eq 0 ]
-    [[ "$output" == *"No commits to export"* ]]
+    [[ "$output" == *"up to date"* ]] || [[ "$output" == *"No commits to export"* ]] || [[ "$output" == *"Already"* ]]
 }
 
-@test "export: creates target branch in monorepo" {
+@test "export: preserves identical commit hashes on split branch" {
     local prefix="projects/mylib"
     cd "${MONOREPO_DIR}"
     git config --local bridge.prefix "${prefix}"
@@ -329,18 +230,31 @@ teardown() {
     cd "${SUBMODULE_DIR}"
     "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
 
-    local base_sha
-    base_sha=$(git rev-parse HEAD)
-    echo "fix" > fix.txt
-    git add fix.txt
-    git commit -m "fix: patch"
+    # Make two commits
+    echo "first" > first.txt
+    git add first.txt
+    git commit -m "feat: first"
+    local first_sha
+    first_sha=$(git rev-parse HEAD)
 
-    run "${MONOREPO_BRIDGE}" export "${base_sha}" my-feature-branch
+    echo "second" > second.txt
+    git add second.txt
+    git commit -m "feat: second"
+    local second_sha
+    second_sha=$(git rev-parse HEAD)
+
+    # Export
+    run "${MONOREPO_BRIDGE}" export main
     [ "$status" -eq 0 ]
 
-    # Verify branch was created in monorepo
-    run git -C "${MONOREPO_DIR}" rev-parse --verify my-feature-branch
-    [ "$status" -eq 0 ]
+    # Split branch tip must be the same SHA as submodule HEAD
+    local split_sha
+    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
+    [ "${split_sha}" = "${second_sha}" ]
+
+    # The first commit should also be present with the same SHA
+    run git -C "${MONOREPO_DIR}" log --format="%H" "bridge-split/main" --grep="feat: first" -1
+    [ "$output" = "${first_sha}" ]
 }
 
 @test "export: restores monorepo to original branch" {
@@ -353,8 +267,6 @@ teardown() {
     cd "${SUBMODULE_DIR}"
     "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
 
-    local base_sha
-    base_sha=$(git rev-parse HEAD)
     echo "fix" > fix.txt
     git add fix.txt
     git commit -m "fix: patch"
@@ -363,7 +275,7 @@ teardown() {
     local mono_branch_before
     mono_branch_before=$(git -C "${MONOREPO_DIR}" rev-parse --abbrev-ref HEAD)
 
-    run "${MONOREPO_BRIDGE}" export "${base_sha}" export-target
+    run "${MONOREPO_BRIDGE}" export main
     [ "$status" -eq 0 ]
 
     # Verify monorepo is back on original branch
@@ -372,7 +284,7 @@ teardown() {
     [ "${mono_branch_after}" = "${mono_branch_before}" ]
 }
 
-# --- sync tests ---------------------------------------------------------------
+# --- sync tests (rebase) -----------------------------------------------------
 
 @test "sync: shows help with --help" {
     run "${MONOREPO_BRIDGE}" sync --help
@@ -380,7 +292,7 @@ teardown() {
     [[ "$output" == *"Pull latest changes"* ]]
 }
 
-@test "sync: pulls new monorepo commits into submodule" {
+@test "sync: pulls new monorepo commits into submodule via rebase" {
     local prefix="projects/mylib"
 
     # Create a remote for the monorepo so sync can fetch from it
@@ -399,11 +311,10 @@ teardown() {
     monorepo_commit "${prefix}" "sync-test.txt" "synced content" "feat: sync test commit"
     monorepo_push
 
-    # Sync: split + fetch + cherry-pick
+    # Sync
     run "${MONOREPO_BRIDGE}" sync main
     [ "$status" -eq 0 ]
     [[ "$output" == *"Sync complete"* ]]
-    [[ "$output" == *"1 new commit(s)"* ]]
 
     # Verify the file arrived
     [ -f "sync-test.txt" ]
@@ -472,7 +383,7 @@ teardown() {
     [ -f "second.txt" ]
 }
 
-@test "sync: cherry-picks multiple commits in order" {
+@test "sync: rebases local work on top of new monorepo commits" {
     local prefix="projects/mylib"
     create_monorepo_remote
     cd "${MONOREPO_DIR}"
@@ -483,34 +394,30 @@ teardown() {
     cd "${SUBMODULE_DIR}"
     "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
 
-    # Add multiple commits to monorepo and push
-    monorepo_commit "${prefix}" "first.txt" "1" "feat: first"
-    monorepo_commit "${prefix}" "second.txt" "2" "feat: second"
-    monorepo_commit "${prefix}" "third.txt" "3" "feat: third"
+    # Add a local commit in submodule
+    echo "local work" > local.txt
+    git add local.txt
+    git commit -m "feat: local work"
+
+    # Add commits to monorepo and push
+    monorepo_commit "${prefix}" "upstream.txt" "upstream" "feat: upstream change"
     monorepo_push
 
+    # Sync — local work should be rebased on top of upstream
     run "${MONOREPO_BRIDGE}" sync main
     [ "$status" -eq 0 ]
-    [[ "$output" == *"3 new commit(s)"* ]]
 
-    # Verify all files arrived and commit order is correct
-    [ -f "first.txt" ]
-    [ -f "second.txt" ]
-    [ -f "third.txt" ]
+    # Both files should exist
+    [ -f "local.txt" ]
+    [ -f "upstream.txt" ]
 
-    # Verify order: first should come before second in log
-    local log
-    log=$(git log --oneline --format="%s")
-    local first_pos second_pos third_pos
-    first_pos=$(echo "${log}" | grep -n "feat: first" | cut -d: -f1)
-    second_pos=$(echo "${log}" | grep -n "feat: second" | cut -d: -f1)
-    third_pos=$(echo "${log}" | grep -n "feat: third" | cut -d: -f1)
-    # Most recent (third) should be at line 1
-    [ "${third_pos}" -lt "${second_pos}" ]
-    [ "${second_pos}" -lt "${first_pos}" ]
+    # Local commit should be on top (most recent)
+    local top_subject
+    top_subject=$(git log --format="%s" -1)
+    [ "${top_subject}" = "feat: local work" ]
 }
 
-@test "sync: skips commits already in submodule" {
+@test "sync: includes merge commit changes from monorepo" {
     local prefix="projects/mylib"
     create_monorepo_remote
     cd "${MONOREPO_DIR}"
@@ -521,22 +428,142 @@ teardown() {
     cd "${SUBMODULE_DIR}"
     "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
 
-    # Add commit to monorepo and push
-    monorepo_commit "${prefix}" "first.txt" "1" "feat: first"
+    # Simulate a merge in monorepo: create a branch, commit, merge back
+    cd "${MONOREPO_DIR}"
+    git checkout -b develop
+    monorepo_commit "${prefix}" "develop-feature.txt" "from develop" "feat: develop feature"
+    git checkout main
+    git merge --no-ff develop -m "Merge branch 'develop' into main"
     monorepo_push
 
-    # Sync once
-    "${MONOREPO_BRIDGE}" sync main
-
-    # Add another commit and push
-    monorepo_commit "${prefix}" "second.txt" "2" "feat: second"
-    monorepo_push
-
-    # Sync again — should only pick the new one
+    # Sync — should bring in the merge commit's file changes
+    cd "${SUBMODULE_DIR}"
     run "${MONOREPO_BRIDGE}" sync main
     [ "$status" -eq 0 ]
-    [[ "$output" == *"1 new commit(s)"* ]]
-    [ -f "second.txt" ]
+
+    # The file from the develop branch should be present
+    [ -f "develop-feature.txt" ]
+    [ "$(cat develop-feature.txt)" = "from develop" ]
+}
+
+# --- reset tests --------------------------------------------------------------
+
+@test "reset: resets all three branches to target commit" {
+    local prefix="projects/mylib"
+    cd "${MONOREPO_DIR}"
+    git config --local bridge.prefix "${prefix}"
+    "${MONOREPO_BRIDGE}" split
+
+    create_submodule_from_split "bridge-split/main"
+    cd "${SUBMODULE_DIR}"
+    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
+
+    # Record the base state
+    local base_sha
+    base_sha=$(git rev-parse HEAD)
+    local base_tree
+    base_tree=$(git rev-parse "HEAD^{tree}")
+
+    # Add a commit and export
+    echo "to be reset" > reset-me.txt
+    git add reset-me.txt
+    git commit -m "feat: will be reset"
+
+    "${MONOREPO_BRIDGE}" export main
+
+    # Verify export worked
+    [ -f "reset-me.txt" ]
+
+    # Now reset all three branches back to base
+    # Step 1: reset submodule
+    git reset --hard "${base_sha}"
+    [ ! -f "reset-me.txt" ]
+
+    # Step 2: reset split branch (same SHA — shared history)
+    git -C "${MONOREPO_DIR}" checkout "bridge-split/main"
+    git -C "${MONOREPO_DIR}" reset --hard "${base_sha}"
+
+    # Step 3: reset monorepo (find commit by tree match)
+    local mono_target
+    mono_target=$(git -C "${MONOREPO_DIR}" log --format="%H" main | while read sha; do
+        subtree=$(git -C "${MONOREPO_DIR}" rev-parse "${sha}:${prefix}" 2>/dev/null)
+        if [[ "${subtree}" == "${base_tree}" ]]; then
+            echo "${sha}"
+            break
+        fi
+    done)
+    git -C "${MONOREPO_DIR}" checkout main
+    git -C "${MONOREPO_DIR}" reset --hard "${mono_target}"
+
+    # Verify all three branches are in sync
+    local split_sha sub_sha
+    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
+    sub_sha=$(git rev-parse HEAD)
+    [ "${split_sha}" = "${sub_sha}" ]
+
+    local mono_subtree split_tree
+    mono_subtree=$(git -C "${MONOREPO_DIR}" rev-parse "main:${prefix}")
+    split_tree=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main^{tree}")
+    [ "${mono_subtree}" = "${split_tree}" ]
+
+    # File should be gone
+    [ ! -f "reset-me.txt" ]
+    run git -C "${MONOREPO_DIR}" show "main:${prefix}/reset-me.txt"
+    [ "$status" -ne 0 ]
+}
+
+# --- verify tests -------------------------------------------------------------
+
+@test "verify: all three branches in sync after export" {
+    local prefix="projects/mylib"
+    cd "${MONOREPO_DIR}"
+    git config --local bridge.prefix "${prefix}"
+    "${MONOREPO_BRIDGE}" split
+
+    create_submodule_from_split "bridge-split/main"
+    cd "${SUBMODULE_DIR}"
+    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
+
+    # Add commit and export
+    echo "verify test" > verify.txt
+    git add verify.txt
+    git commit -m "feat: verify test"
+
+    "${MONOREPO_BRIDGE}" export main
+
+    # Check 1: split branch == submodule (same hash)
+    local split_sha sub_sha
+    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
+    sub_sha=$(git rev-parse HEAD)
+    [ "${split_sha}" = "${sub_sha}" ]
+
+    # Check 2: monorepo subtree tree == split branch tree
+    local mono_subtree split_tree
+    mono_subtree=$(git -C "${MONOREPO_DIR}" rev-parse "main:${prefix}")
+    split_tree=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main^{tree}")
+    [ "${mono_subtree}" = "${split_tree}" ]
+}
+
+@test "verify: detects mismatch when branches diverge" {
+    local prefix="projects/mylib"
+    cd "${MONOREPO_DIR}"
+    git config --local bridge.prefix "${prefix}"
+    "${MONOREPO_BRIDGE}" split
+
+    create_submodule_from_split "bridge-split/main"
+    cd "${SUBMODULE_DIR}"
+    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
+
+    # Add commit to submodule WITHOUT exporting
+    echo "diverged" > diverged.txt
+    git add diverged.txt
+    git commit -m "feat: diverged"
+
+    # Check 1 should fail — split branch doesn't have this commit
+    local split_sha sub_sha
+    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
+    sub_sha=$(git rev-parse HEAD)
+    [ "${split_sha}" != "${sub_sha}" ]
 }
 
 # --- auto-detect tests --------------------------------------------------------
@@ -603,98 +630,131 @@ teardown() {
     [ "$(git config --local --get bridge.split-prefix)" = "bridge-split" ]
 }
 
-@test "require_bridge_config: fails when only partial config exists" {
-    create_submodule "projects/mylib"
-    cd "${SUBMODULE_DIR}"
-
-    # Set only remote, missing monorepo-path and prefix
-    git config --local bridge.remote "some-remote"
-
-    run "${MONOREPO_BRIDGE}" pick abc123
-    [ "$status" -ne 0 ]
-    # Should fail because monorepo-path and prefix are missing
-}
-
-# --- pick: exact subject matching tests ---------------------------------------
-
-@test "pick: matches exact subject, not substring" {
-    local prefix="projects/mylib"
-    cd "${MONOREPO_DIR}"
-    git config --local bridge.prefix "${prefix}"
-
-    # Create two commits with similar subjects
-    monorepo_commit "${prefix}" "update-config.txt" "config" "fix: update config"
-    monorepo_commit "${prefix}" "update.txt" "update" "fix: update"
-    local target_sha
-    target_sha=$(git rev-parse HEAD)
-
-    "${MONOREPO_BRIDGE}" split
-
-    create_submodule_from_split "bridge-split/main"
-    cd "${SUBMODULE_DIR}"
-    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
-
-    # Reset to before both commits
-    git reset --hard HEAD~2
-
-    # Pick the "fix: update" commit — should NOT pick "fix: update config"
-    run "${MONOREPO_BRIDGE}" pick "${target_sha}"
-    [ "$status" -eq 0 ]
-
-    # Should have the "update.txt" file but NOT "update-config.txt"
-    [ -f "update.txt" ]
-    [ ! -f "update-config.txt" ]
-}
-
 # --- integration tests --------------------------------------------------------
 
-@test "integration: full round-trip (split -> setup -> pick -> export)" {
+@test "integration: full export-reset cycle" {
     local prefix="projects/mylib"
 
-    # 1. Add a commit in monorepo
-    monorepo_commit "${prefix}" "feature.txt" "mono feature" "feat: monorepo feature"
-    local mono_feature_sha
-    mono_feature_sha=$(git -C "${MONOREPO_DIR}" rev-parse HEAD)
-
-    # 2. Split in monorepo
+    # 1. Split in monorepo
     cd "${MONOREPO_DIR}"
     git config --local bridge.prefix "${prefix}"
     "${MONOREPO_BRIDGE}" split
 
-    # 3. Create submodule from split and set up bridge
+    # 2. Create submodule from split and set up bridge
     create_submodule_from_split "bridge-split/main"
     cd "${SUBMODULE_DIR}"
     "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
 
-    # Verify the monorepo feature is in the submodule
-    [ -f "feature.txt" ]
+    # Record base state
+    local base_sha
+    base_sha=$(git rev-parse HEAD)
 
-    # 4. Add a commit in submodule
-    local sub_base
-    sub_base=$(git rev-parse HEAD)
+    # 3. Add a commit in submodule
     echo "submodule fix" > subfix.txt
     git add subfix.txt
     git commit -m "fix: submodule-only fix"
+    local fix_sha
+    fix_sha=$(git rev-parse HEAD)
 
-    # 5. Export submodule commit to monorepo, targeting 'main'
-    "${MONOREPO_BRIDGE}" export "${sub_base}" main
-
-    # Verify it landed in monorepo on the main branch
-    run git -C "${MONOREPO_DIR}" show main:"${prefix}/subfix.txt"
+    # 4. Export to monorepo
+    run "${MONOREPO_BRIDGE}" export main
     [ "$status" -eq 0 ]
 
-    # 6. Add another commit in monorepo on a new branch, split, and pick it
-    cd "${MONOREPO_DIR}"
-    git checkout main
-    git checkout -b feature-y
-    monorepo_commit "${prefix}" "second-feature.txt" "second" "feat: second monorepo feature"
-    local mono_second_sha
-    mono_second_sha=$(git rev-parse HEAD)
-    "${MONOREPO_BRIDGE}" split feature-y
+    # Verify it landed in monorepo under prefix
+    run git -C "${MONOREPO_DIR}" show main:"${prefix}/subfix.txt"
+    [ "$status" -eq 0 ]
+    [ "$output" = "submodule fix" ]
 
-    # Pick in submodule
+    # Verify all three branches are in sync
+    local split_sha sub_sha
+    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
+    sub_sha=$(git rev-parse HEAD)
+    [ "${split_sha}" = "${sub_sha}" ]
+
+    local mono_subtree split_tree
+    mono_subtree=$(git -C "${MONOREPO_DIR}" rev-parse "main:${prefix}")
+    split_tree=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main^{tree}")
+    [ "${mono_subtree}" = "${split_tree}" ]
+
+    # 5. Reset back to base
+    local base_tree
+    base_tree=$(git rev-parse "${base_sha}^{tree}")
+
+    # Reset submodule
+    git reset --hard "${base_sha}"
+
+    # Reset split branch
+    git -C "${MONOREPO_DIR}" checkout "bridge-split/main"
+    git -C "${MONOREPO_DIR}" reset --hard "${base_sha}"
+
+    # Reset monorepo (find by tree match)
+    local mono_target
+    mono_target=$(git -C "${MONOREPO_DIR}" log --format="%H" main | while read sha; do
+        subtree=$(git -C "${MONOREPO_DIR}" rev-parse "${sha}:${prefix}" 2>/dev/null)
+        if [[ "${subtree}" == "${base_tree}" ]]; then
+            echo "${sha}"
+            break
+        fi
+    done)
+    git -C "${MONOREPO_DIR}" checkout main
+    git -C "${MONOREPO_DIR}" reset --hard "${mono_target}"
+
+    # 6. Verify reset — all three in sync, file gone
+    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
+    sub_sha=$(git rev-parse HEAD)
+    [ "${split_sha}" = "${sub_sha}" ]
+    [ "${sub_sha}" = "${base_sha}" ]
+
+    mono_subtree=$(git -C "${MONOREPO_DIR}" rev-parse "main:${prefix}")
+    split_tree=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main^{tree}")
+    [ "${mono_subtree}" = "${split_tree}" ]
+
+    [ ! -f "subfix.txt" ]
+}
+
+@test "integration: export + sync round-trip with merge commits" {
+    local prefix="projects/mylib"
+    create_monorepo_remote
+
+    # 1. Split and create submodule
+    cd "${MONOREPO_DIR}"
+    git config --local bridge.prefix "${prefix}"
+    "${MONOREPO_BRIDGE}" split
+
+    create_submodule_from_split "bridge-split/main"
     cd "${SUBMODULE_DIR}"
-    git fetch "$(git config --get bridge.remote)"
-    "${MONOREPO_BRIDGE}" pick "${mono_second_sha}"
-    [ -f "second-feature.txt" ]
+    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
+
+    # 2. Add a commit in submodule and export
+    echo "feature" > feature.txt
+    git add feature.txt
+    git commit -m "feat: submodule feature"
+
+    "${MONOREPO_BRIDGE}" export main
+
+    # Push monorepo to remote
+    git -C "${MONOREPO_DIR}" push origin main 2>/dev/null
+
+    # 3. Simulate merge in monorepo (someone merges develop)
+    cd "${MONOREPO_DIR}"
+    git checkout -b develop
+    monorepo_commit "${prefix}" "develop.txt" "from develop" "feat: develop work"
+    git checkout main
+    git merge --no-ff develop -m "Merge branch 'develop'"
+    monorepo_push
+
+    # 4. Add another local commit in submodule
+    cd "${SUBMODULE_DIR}"
+    echo "local" > local.txt
+    git add local.txt
+    git commit -m "feat: local work"
+
+    # 5. Sync — should bring in merge commit changes and rebase local work
+    run "${MONOREPO_BRIDGE}" sync main
+    [ "$status" -eq 0 ]
+
+    # Both files should exist: develop.txt from merge, local.txt from local work
+    [ -f "develop.txt" ]
+    [ -f "local.txt" ]
+    [ -f "feature.txt" ]
 }

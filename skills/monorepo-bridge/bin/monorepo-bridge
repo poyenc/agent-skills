@@ -9,9 +9,8 @@
 # Commands:
 #   setup    Set up the bridge between a submodule and its monorepo
 #   split    Split a monorepo subdirectory into a standalone branch
-#   pick     Cherry-pick a monorepo commit into the submodule
-#   export   Export submodule commits into the monorepo
-#   sync     Pull latest monorepo changes into the submodule
+#   export   Export submodule commits into the monorepo (fetch + subtree merge)
+#   sync     Pull latest monorepo changes into the submodule (split + rebase)
 #
 # Run 'monorepo-bridge <command> --help' for command-specific usage.
 
@@ -327,8 +326,8 @@ cmd_setup() {
 
     echo ""
     echo "You can now:"
-    echo "  ${PROG} pick <monorepo-commit>     # cherry-pick a commit from the monorepo"
-    echo "  ${PROG} export <base-ref>          # export commits to the monorepo"
+    echo "  ${PROG} export [target-branch]     # export commits to the monorepo"
+    echo "  ${PROG} sync [monorepo-branch]     # pull monorepo changes into submodule"
     echo "  git merge ${remote}/<branch>       # merge a split branch"
 }
 
@@ -607,138 +606,26 @@ cmd_split() {
     echo "  git fetch $(bridge_config_get remote "bridge-upstream") ${split_branch}"
 }
 
-# --- Subcommand: pick ---------------------------------------------------------
-
-cmd_pick() {
-    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-        echo "Usage: ${PROG} pick <monorepo-commit>"
-        echo ""
-        echo "Cherry-pick a monorepo commit into the current submodule branch."
-        echo "Translates the monorepo commit to its subtree-split equivalent."
-        echo ""
-        echo "Run this inside the submodule directory."
-        exit 0
-    fi
-
-    if [[ $# -lt 1 ]]; then
-        echo "ERROR: Missing required argument <monorepo-commit>" >&2
-        echo "Run '${PROG} pick --help' for usage." >&2
-        exit 1
-    fi
-
-    local mono_commit="$1"
-
-    # Read config (auto-detect from existing remotes if needed)
-    require_bridge_config || exit 1
-    local remote
-    remote=$(bridge_config_get "remote")
-    local monorepo_path
-    monorepo_path=$(resolve_monorepo_path) || exit 1
-    local prefix
-    prefix=$(bridge_config_get "prefix")
-
-    echo "==> Looking up monorepo commit ${mono_commit}"
-
-    # Verify the commit exists
-    local mono_full
-    mono_full=$(git -C "${monorepo_path}" rev-parse "${mono_commit}") || {
-        echo "ERROR: Commit '${mono_commit}' not found in monorepo at ${monorepo_path}" >&2
-        exit 1
-    }
-    local mono_subject
-    mono_subject=$(git -C "${monorepo_path}" log -1 --format="%s" "${mono_full}")
-    echo "    ${mono_full} ${mono_subject}"
-
-    # Check if it touches files under the prefix
-    local changed_files
-    changed_files=$(git -C "${monorepo_path}" diff-tree --no-commit-id --name-only -r "${mono_full}" -- "${prefix}" 2>/dev/null || true)
-
-    if [[ -z "${changed_files}" ]]; then
-        echo ""
-        echo "WARNING: Commit ${mono_commit} does not touch any files under ${prefix}."
-        echo "         Nothing to cherry-pick."
-        exit 0
-    fi
-
-    echo ""
-    echo "    Files changed under ${prefix}:"
-    echo "${changed_files}" | sed 's/^/      /'
-
-    # Find the corresponding subtree-split commit
-    echo ""
-    echo "==> Finding corresponding subtree-split commit..."
-
-    local found_sha=""
-    while IFS= read -r split_branch; do
-        split_branch="${split_branch#"${split_branch%%[![:space:]]*}"}"  # trim leading whitespace
-        [[ -z "${split_branch}" ]] && continue
-        # Use --grep for candidate search, then verify exact subject match
-        local candidate
-        candidate=$(git log "${split_branch}" --format="%H %s" --grep="${mono_subject}" --fixed-strings -1 2>/dev/null || true)
-        if [[ -n "${candidate}" ]]; then
-            local candidate_sha="${candidate%% *}"
-            local candidate_subject="${candidate#* }"
-            if [[ "${candidate_subject}" == "${mono_subject}" ]]; then
-                found_sha="${candidate_sha}"
-                echo "    Found: ${found_sha} on ${split_branch}"
-                break
-            fi
-        fi
-    done < <(git branch -r --list "${remote}/*")
-
-    if [[ -z "${found_sha}" ]]; then
-        echo ""
-        echo "ERROR: Could not find a matching subtree-split commit." >&2
-        echo "       Make sure you have run '${PROG} split' in the monorepo" >&2
-        echo "       for the branch containing commit ${mono_commit}, then" >&2
-        echo "       'git fetch ${remote}' here." >&2
-        exit 1
-    fi
-
-    echo ""
-    echo "==> Cherry-picking ${found_sha}..."
-
-    if git cherry-pick "${found_sha}" 2>/dev/null; then
-        : # success
-    else
-        # Cherry-pick failed — clean up the in-progress state first
-        git cherry-pick --abort 2>/dev/null || true
-        if is_blobless_remote "${remote}"; then
-            echo "    (cherry-pick failed, falling back to format-patch/am for blobless remote)"
-            git -C "${monorepo_path}" format-patch -1 "${found_sha}" --stdout | git am
-        else
-            # Re-run without suppressing output so the user sees the error
-            git cherry-pick "${found_sha}"
-        fi
-    fi
-
-    echo ""
-    echo "==> Done! Commit applied to $(git rev-parse --abbrev-ref HEAD)."
-}
-
 # --- Subcommand: export ------------------------------------------------------
 
 cmd_export() {
     if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-        echo "Usage: ${PROG} export <base-ref> [target-branch]"
+        echo "Usage: ${PROG} export [target-branch]"
         echo ""
         echo "Export commits from the submodule into the monorepo."
         echo "Run this inside the submodule directory."
         echo ""
+        echo "Steps performed:"
+        echo "  1. Fetch submodule commits into monorepo (no remote added)"
+        echo "  2. Update the split branch to match submodule HEAD"
+        echo "  3. Subtree-merge split branch into monorepo target branch"
+        echo ""
         echo "Arguments:"
-        echo "  base-ref        Base ref for the commit range (e.g., origin/main)"
-        echo "  target-branch   Branch to create in monorepo (default: current branch name)"
+        echo "  target-branch   Branch in monorepo to merge into (default: current branch name)"
         exit 0
     fi
 
-    if [[ $# -lt 1 ]]; then
-        echo "ERROR: Missing required argument <base-ref>" >&2
-        echo "Run '${PROG} export --help' for usage." >&2
-        exit 1
-    fi
-
-    local base_ref="$1"
-    local target_branch="${2:-$(git rev-parse --abbrev-ref HEAD)}"
+    local target_branch="${1:-$(git rev-parse --abbrev-ref HEAD)}"
 
     # Read config (auto-detect from existing remotes if needed)
     require_bridge_config || exit 1
@@ -746,6 +633,8 @@ cmd_export() {
     monorepo_path=$(resolve_monorepo_path) || exit 1
     local prefix
     prefix=$(bridge_config_get "prefix")
+    local split_prefix
+    split_prefix=$(bridge_config_get "split-prefix" "bridge-split")
 
     # Validate monorepo path and prefix
     if [[ ! -d "${monorepo_path}/${prefix}" ]]; then
@@ -754,32 +643,41 @@ cmd_export() {
         exit 1
     fi
 
-    # Count commits
-    local commit_count
-    commit_count=$(git rev-list --count "${base_ref}..HEAD")
-    if [[ "${commit_count}" -eq 0 ]]; then
-        echo "No commits to export (${base_ref}..HEAD is empty)."
+    local sub_branch
+    sub_branch=$(git rev-parse --abbrev-ref HEAD)
+    local sub_sha
+    sub_sha=$(git rev-parse HEAD)
+    local split_branch="${split_prefix}/${target_branch}"
+
+    # Check if split branch already matches submodule HEAD
+    local split_sha=""
+    split_sha=$(git -C "${monorepo_path}" rev-parse "${split_branch}" 2>/dev/null || echo "")
+    if [[ "${split_sha}" == "${sub_sha}" ]]; then
+        echo "==> Split branch '${split_branch}' already up to date with submodule HEAD."
+        echo "    Nothing to export."
         exit 0
     fi
 
-    echo "==> Exporting ${commit_count} commit(s) from $(git rev-parse --abbrev-ref HEAD)"
-    echo "    Range: ${base_ref}..HEAD"
+    echo "==> Exporting from submodule branch '${sub_branch}'"
+    echo "    Submodule HEAD: ${sub_sha:0:12}"
+    echo "    Target branch:  ${target_branch}"
     echo ""
 
-    # Generate patches
-    local patch_dir
-    patch_dir="$(mktemp -d)"
-    trap 'rm -rf "${patch_dir:-}" "${apply_dir:-}"' EXIT
+    # Step 1: Fetch submodule commits into monorepo object store
+    local sub_toplevel
+    sub_toplevel=$(git rev-parse --show-toplevel)
+    echo "==> Step 1: Fetching submodule commits into monorepo..."
+    git -C "${monorepo_path}" fetch "${sub_toplevel}" "${sub_branch}" 2>&1
 
-    git format-patch "${base_ref}..HEAD" -o "${patch_dir}" --quiet
-    local patch_count
-    patch_count=$(find "${patch_dir}" -name "*.patch" 2>/dev/null | wc -l)
-    echo "    Generated ${patch_count} patch(es)"
-
-    # Set up target branch in monorepo
+    # Step 2: Update split branch to point at fetched commits (identical hashes)
     echo ""
-    echo "==> Applying to monorepo at ${monorepo_path}"
-    echo "    Target branch: ${target_branch}"
+    echo "==> Step 2: Updating split branch '${split_branch}'..."
+    git -C "${monorepo_path}" branch -f "${split_branch}" FETCH_HEAD 2>&1
+    echo "    Split branch now at $(git -C "${monorepo_path}" rev-parse "${split_branch}")"
+
+    # Step 3: Subtree-merge split branch into monorepo target branch
+    echo ""
+    echo "==> Step 3: Subtree-merging into '${target_branch}'..."
 
     local mono_current_branch
     mono_current_branch=$(git -C "${monorepo_path}" rev-parse --abbrev-ref HEAD)
@@ -787,53 +685,21 @@ cmd_export() {
 
     if git -C "${monorepo_path}" rev-parse --verify "${target_branch}" &>/dev/null; then
         if [[ "${mono_current_branch}" != "${target_branch}" ]]; then
-            echo "    Branch '${target_branch}' exists, checking it out"
-            git -C "${monorepo_path}" checkout "${target_branch}"
+            git -C "${monorepo_path}" checkout "${target_branch}" 2>&1
             need_restore=true
         fi
     else
         echo "    Creating branch '${target_branch}' from '${mono_current_branch}'"
-        git -C "${monorepo_path}" checkout -b "${target_branch}"
+        git -C "${monorepo_path}" checkout -b "${target_branch}" 2>&1
         need_restore=true
     fi
 
-    # Filter out already-applied patches
-    echo ""
-    echo "==> Checking for already-applied commits..."
-    local apply_dir
-    apply_dir="$(mktemp -d)"
+    # Get the latest commit message from the submodule for the merge
+    local merge_msg
+    merge_msg=$(git log -1 --format="%s" HEAD)
 
-    local skipped=0
-    for patch in "${patch_dir}"/*.patch; do
-        [[ -f "${patch}" ]] || continue
-        local subject
-        subject=$(sed -n 's/^Subject: \(\[PATCH[^]]*\] \)\{0,1\}//p' "${patch}" | head -1)
-        if git -C "${monorepo_path}" log "${target_branch}" --format="%s" --fixed-strings --grep="${subject}" -1 | grep -qF "${subject}"; then
-            echo "    SKIP (already applied): ${subject}"
-            skipped=$((skipped + 1))
-        else
-            cp "${patch}" "${apply_dir}/"
-        fi
-    done
-
-    local new_count
-    new_count=$(find "${apply_dir}" -name "*.patch" 2>/dev/null | wc -l)
-
-    if [[ "${new_count}" -eq 0 ]]; then
-        echo ""
-        echo "==> All ${patch_count} commit(s) already applied. Nothing to do."
-        exit 0
-    fi
-
-    if [[ "${skipped}" -gt 0 ]]; then
-        echo ""
-        echo "    Skipped ${skipped}, applying ${new_count} new commit(s)"
-    fi
-
-    # Apply patches
-    echo ""
-    echo "==> Applying patches under ${prefix}/"
-    git -C "${monorepo_path}" am --directory="${prefix}" "${apply_dir}"/*.patch
+    git -C "${monorepo_path}" merge -s subtree --allow-unrelated-histories \
+        "${split_branch}" -m "${merge_msg}" 2>&1
 
     # Restore monorepo to its original branch
     if [[ "${need_restore}" == true ]]; then
@@ -841,13 +707,10 @@ cmd_export() {
     fi
 
     echo ""
-    echo "==> Done! ${new_count} commit(s) applied to '${target_branch}' in monorepo."
-    if [[ "${skipped}" -gt 0 ]]; then
-        echo "    (${skipped} already-applied commit(s) skipped)"
-    fi
+    echo "==> Done! Exported to '${target_branch}' in monorepo."
     echo ""
     echo "    cd ${monorepo_path}"
-    echo "    git log --oneline -${new_count} ${target_branch}"
+    echo "    git log --oneline -3 ${target_branch}"
 }
 
 # --- Subcommand: sync ---------------------------------------------------------
@@ -865,7 +728,7 @@ cmd_sync() {
         echo "  3. Fast-forward the monorepo's local branch"
         echo "  4. Re-split the updated branch"
         echo "  5. Fetch the updated split into the submodule"
-        echo "  6. Cherry-pick new commits not already on the local branch"
+        echo "  6. Rebase local work onto the updated split branch"
         echo ""
         echo "Arguments:"
         echo "  monorepo-branch   Branch name in monorepo (auto-detected from split"
@@ -1000,43 +863,30 @@ cmd_sync() {
     echo "==> Fetching updated split branch..."
     git fetch "${remote}" 2>&1
 
-    # Step 5: Cherry-pick new commits
+    # Step 5: Rebase local work onto updated split branch
     echo ""
-    echo "==> Finding new commits to apply..."
-    local new_commits
-    new_commits=$(git log --oneline --no-merges --right-only --cherry-pick \
-        "HEAD...${remote_split}" 2>/dev/null || true)
+    local local_sha remote_sha
+    local_sha=$(git rev-parse HEAD)
+    remote_sha=$(git rev-parse "${remote_split}")
 
-    if [[ -z "${new_commits}" ]]; then
-        echo "    Already up to date — no new commits to apply."
+    if [[ "${local_sha}" == "${remote_sha}" ]]; then
+        echo "    Already up to date — no new commits."
         echo ""
         echo "==> Sync complete."
         return 0
     fi
 
-    local count
-    count=$(echo "${new_commits}" | wc -l)
-    echo "    ${count} new commit(s) to cherry-pick:"
-    echo "${new_commits}" | sed 's/^/      /'
+    echo "==> Rebasing local work onto updated split branch..."
+    git rebase "${remote_split}" 2>&1
 
-    # Build list of SHAs in reverse order (oldest first)
-    local shas=()
-    while IFS= read -r line; do
-        shas+=("${line%% *}")
-    done <<< "${new_commits}"
-
-    # Reverse the array (oldest first)
-    local reversed=()
-    for (( i=${#shas[@]}-1; i>=0; i-- )); do
-        reversed+=("${shas[$i]}")
-    done
+    local new_head
+    new_head=$(git rev-parse HEAD)
+    if [[ "${new_head}" == "${remote_sha}" ]]; then
+        echo "    No local commits to rebase — fast-forwarded."
+    fi
 
     echo ""
-    echo "==> Cherry-picking ${count} commit(s)..."
-    git cherry-pick "${reversed[@]}" 2>&1
-
-    echo ""
-    echo "==> Sync complete. ${count} commit(s) applied."
+    echo "==> Sync complete."
 }
 
 # --- Main dispatcher ---------------------------------------------------------
@@ -1048,9 +898,8 @@ main() {
         echo "Commands:"
         echo "  setup    Set up the bridge (run from submodule)"
         echo "  split    Split monorepo subdirectory into standalone branch"
-        echo "  pick     Cherry-pick a monorepo commit into submodule"
-        echo "  export   Export submodule commits to monorepo"
-        echo "  sync     Pull latest monorepo changes into submodule"
+        echo "  export   Export submodule commits to monorepo (fetch + subtree merge)"
+        echo "  sync     Pull latest monorepo changes into submodule (split + rebase)"
         echo ""
         echo "Run '${PROG} <command> --help' for command-specific usage."
         exit 1
@@ -1062,7 +911,6 @@ main() {
     case "${cmd}" in
         setup)  cmd_setup "$@" ;;
         split)  cmd_split "$@" ;;
-        pick)   cmd_pick "$@" ;;
         export) cmd_export "$@" ;;
         sync)   cmd_sync "$@" ;;
         -h|--help)
