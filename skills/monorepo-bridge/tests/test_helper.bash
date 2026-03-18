@@ -20,9 +20,11 @@ create_monorepo() {
 }
 
 # Add a commit to the monorepo under the prefix.
+# Can be called from any directory — always operates on MONOREPO_DIR.
 # Usage: monorepo_commit <prefix> <filename> <content> <message>
 monorepo_commit() {
     local prefix="$1" filename="$2" content="$3" message="$4"
+    mkdir -p "${MONOREPO_DIR}/${prefix}"
     echo "${content}" > "${MONOREPO_DIR}/${prefix}/${filename}"
     git -C "${MONOREPO_DIR}" add .
     git -C "${MONOREPO_DIR}" commit -m "${message}"
@@ -54,9 +56,32 @@ create_submodule() {
     git -C "${SUBMODULE_DIR}" commit -m "initial commit"
 }
 
+# Create a "remote" clone of the monorepo to simulate an upstream origin.
+# This is needed for sync tests which fetch from the monorepo's remote.
+# Sets MONOREPO_REMOTE_DIR and adds it as 'origin' in the monorepo.
+# Usage: create_monorepo_remote
+create_monorepo_remote() {
+    MONOREPO_REMOTE_DIR="$(mktemp -d)"
+    git clone --bare "${MONOREPO_DIR}" "${MONOREPO_REMOTE_DIR}"
+    # Point the monorepo's origin at the bare clone
+    if git -C "${MONOREPO_DIR}" remote get-url origin &>/dev/null; then
+        git -C "${MONOREPO_DIR}" remote set-url origin "${MONOREPO_REMOTE_DIR}"
+    else
+        git -C "${MONOREPO_DIR}" remote add origin "${MONOREPO_REMOTE_DIR}"
+    fi
+}
+
+# Push monorepo commits to its remote (bare clone).
+# Usage: monorepo_push [branch]
+monorepo_push() {
+    local branch="${1:-$(git -C "${MONOREPO_DIR}" rev-parse --abbrev-ref HEAD)}"
+    git -C "${MONOREPO_DIR}" push origin "${branch}" 2>/dev/null
+}
+
 # Clean up temp dirs
 cleanup_fixtures() {
     [[ -n "${MONOREPO_DIR:-}" ]] && rm -rf "${MONOREPO_DIR}" || true
     [[ -n "${SUBMODULE_DIR:-}" ]] && rm -rf "${SUBMODULE_DIR}" || true
+    [[ -n "${MONOREPO_REMOTE_DIR:-}" ]] && rm -rf "${MONOREPO_REMOTE_DIR}" || true
     return 0
 }
