@@ -11,6 +11,7 @@ A collection of Claude Code agent skills for specialized tasks.
 | **[ck-fmha-codegen-guide](skills/ck-fmha-codegen-guide/)** | Generate comprehensive FMHA kernel selection guides by dynamically analyzing CK codegen source code. Produces filename structure docs, field references, minimal kernel sets, and filter commands for `generate.py`. |
 | **[ck-list-fmha-prs](skills/ck-list-fmha-prs/)** | List open pull requests from ROCm/rocm-libraries focused on fused multi-head attention (FMHA) kernels. |
 | **[gpu-usage](skills/gpu-usage/)** | Report GPU usage on shared servers — shows which processes occupy each GPU, VRAM percentage, GPU utilization, process owner, elapsed time, and Docker container name. |
+| **[monorepo-bridge](skills/monorepo-bridge/)** | Bidirectional commit transfer between monorepos and standalone submodule repos. CLI tool with setup, split, pick, and export subcommands, plus agent skill for workflow guidance. |
 
 ## Usage
 

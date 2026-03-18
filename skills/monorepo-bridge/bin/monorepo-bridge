@@ -1,0 +1,715 @@
+#!/usr/bin/env bash
+#
+# monorepo-bridge — Bidirectional commit transfer between a monorepo
+# and standalone submodule repos.
+#
+# Usage:
+#   monorepo-bridge <command> [options] [args]
+#
+# Commands:
+#   setup    Set up the bridge between a submodule and its monorepo
+#   split    Split a monorepo subdirectory into a standalone branch
+#   pick     Cherry-pick a monorepo commit into the submodule
+#   export   Export submodule commits into the monorepo
+#
+# Run 'monorepo-bridge <command> --help' for command-specific usage.
+
+set -euo pipefail
+
+PROG="monorepo-bridge"
+VERSION="0.1.0"
+
+# --- Config helpers -----------------------------------------------------------
+
+# Read a bridge config value. Resolution order:
+#   1. Variable override (caller sets BRIDGE_<KEY> before calling)
+#   2. Git config (bridge.<key>)
+#   3. Default value (third argument)
+# Returns empty string and exit 1 if no value found and no default.
+bridge_config_get() {
+    local key="$1"
+    local var_name="BRIDGE_$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
+    local default="${2:-}"
+
+    # 1. Check variable override
+    if [[ -n "${!var_name:-}" ]]; then
+        echo "${!var_name}"
+        return 0
+    fi
+
+    # 2. Check git config
+    local val
+    if val=$(git config --local --get "bridge.${key}" 2>/dev/null) && [[ -n "${val}" ]]; then
+        echo "${val}"
+        return 0
+    fi
+
+    # 3. Default
+    if [[ -n "${default}" ]]; then
+        echo "${default}"
+        return 0
+    fi
+
+    return 1
+}
+
+# Write a bridge config value to local git config.
+bridge_config_set() {
+    local key="$1"
+    local value="$2"
+    git config --local "bridge.${key}" "${value}"
+}
+
+# Resolve the monorepo path from config, stripping file:// prefix if present.
+resolve_monorepo_path() {
+    local path
+    if ! path=$(bridge_config_get "monorepo-path"); then
+        echo "ERROR: No monorepo path configured. Run '${PROG} setup' first." >&2
+        return 1
+    fi
+    # Strip file:// prefix if present (from blobless setup)
+    path="${path#file://}"
+    echo "${path}"
+}
+
+# Detect if a remote is blobless (file:// URL from partial clone setup).
+is_blobless_remote() {
+    local remote="$1"
+    local url
+    url=$(git remote get-url "${remote}" 2>/dev/null || true)
+    [[ "${url}" == file://* ]]
+}
+
+# --- Subcommand: setup -------------------------------------------------------
+
+cmd_setup() {
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        echo "Usage: ${PROG} setup [options] [monorepo-path]"
+        echo ""
+        echo "Set up the bridge between a submodule repo and its monorepo."
+        echo "Run this inside the submodule directory."
+        echo ""
+        echo "Options:"
+        echo "  --prefix=<path>        Subdirectory prefix in monorepo"
+        echo "  --remote=<name>        Remote name (default: bridge-upstream)"
+        echo "  --split-prefix=<name>  Branch prefix for split branches (default: bridge-split)"
+        echo ""
+        echo "If monorepo-path is omitted, auto-detection is attempted."
+        exit 0
+    fi
+
+    local monorepo_path=""
+    local prefix_override=""
+    local remote_override=""
+    local split_prefix_override=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --prefix=*) prefix_override="${1#--prefix=}"; shift ;;
+            --remote=*) remote_override="${1#--remote=}"; shift ;;
+            --split-prefix=*) split_prefix_override="${1#--split-prefix=}"; shift ;;
+            -*) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
+            *) monorepo_path="$(realpath "$1" 2>/dev/null || echo "$1")"; shift ;;
+        esac
+    done
+
+    # Validate we're in a git repo
+    if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+        echo "ERROR: Not inside a git repository. cd into your submodule first." >&2
+        exit 1
+    fi
+
+    # Auto-detect monorepo path if not provided
+    if [[ -z "${monorepo_path}" ]]; then
+        monorepo_path=$(auto_detect_monorepo_path) || {
+            echo "ERROR: Could not auto-detect monorepo path." >&2
+            echo "       Pass it explicitly: ${PROG} setup /path/to/monorepo" >&2
+            exit 1
+        }
+    fi
+
+    # Validate monorepo path is a git repo
+    if [[ ! -d "${monorepo_path}/.git" ]] && [[ ! -f "${monorepo_path}/.git" ]]; then
+        echo "ERROR: '${monorepo_path}' is not a git repository." >&2
+        exit 1
+    fi
+
+    # Resolve config values
+    local remote="${remote_override:-$(bridge_config_get remote "bridge-upstream")}"
+    local split_prefix="${split_prefix_override:-$(bridge_config_get split-prefix "bridge-split")}"
+
+    # Auto-detect or use provided prefix
+    local prefix=""
+    if [[ -n "${prefix_override}" ]]; then
+        prefix="${prefix_override}"
+    else
+        prefix=$(auto_detect_prefix "${monorepo_path}") || {
+            echo "ERROR: Could not auto-detect prefix." >&2
+            echo "       Pass it explicitly: ${PROG} setup --prefix=<path> ${monorepo_path}" >&2
+            exit 1
+        }
+    fi
+
+    # Validate prefix exists in monorepo
+    if [[ ! -d "${monorepo_path}/${prefix}" ]]; then
+        echo "ERROR: '${monorepo_path}/${prefix}' not found." >&2
+        exit 1
+    fi
+
+    echo "==> Setting up monorepo bridge"
+    echo "    Monorepo:      ${monorepo_path}"
+    echo "    Prefix:        ${prefix}"
+    echo "    Remote:        ${remote}"
+    echo "    Split prefix:  ${split_prefix}"
+
+    # Add or update remote
+    if git remote get-url "${remote}" &>/dev/null; then
+        local existing_url
+        existing_url=$(git remote get-url "${remote}")
+        echo ""
+        echo "    Remote '${remote}' already exists (url: ${existing_url})"
+        echo "    Updating URL to ${monorepo_path}"
+        git remote set-url "${remote}" "${monorepo_path}"
+    else
+        echo ""
+        echo "    Adding remote '${remote}' -> ${monorepo_path}"
+        git remote add "${remote}" "${monorepo_path}"
+    fi
+
+    # Configure fetch refspec for split branches
+    git config "remote.${remote}.fetch" "+refs/heads/${split_prefix}/*:refs/remotes/${remote}/*"
+
+    # Handle partial/blobless clone
+    echo ""
+    echo "==> Fetching from '${remote}'..."
+    if git -C "${monorepo_path}" config --get remote.origin.partialclonefilter &>/dev/null; then
+        echo "    (source repo is a partial clone, using blobless fetch)"
+        git remote set-url "${remote}" "file://${monorepo_path}"
+        git -C "${monorepo_path}" config uploadpack.allowFilter true
+        git fetch --filter=blob:none "${remote}"
+    else
+        git fetch "${remote}"
+    fi
+
+    # Save config
+    bridge_config_set "prefix" "${prefix}"
+    bridge_config_set "remote" "${remote}"
+    bridge_config_set "monorepo-path" "${monorepo_path}"
+    bridge_config_set "split-prefix" "${split_prefix}"
+
+    echo ""
+    echo "==> Bridge configured. Available branches:"
+    git branch -r --list "${remote}/*" || echo "    (none — run '${PROG} split' in the monorepo first)"
+
+    echo ""
+    echo "You can now:"
+    echo "  ${PROG} pick <monorepo-commit>     # cherry-pick a commit from the monorepo"
+    echo "  ${PROG} export <base-ref>          # export commits to the monorepo"
+    echo "  git merge ${remote}/<branch>       # merge a split branch"
+}
+
+# Auto-detect the monorepo path by inspecting submodule context.
+auto_detect_monorepo_path() {
+    # Check if we're inside a submodule (`.git` is a file, not a directory)
+    if [[ ! -f ".git" ]]; then
+        return 1
+    fi
+
+    # Read the gitdir from the .git file to find the parent repo
+    local gitdir
+    gitdir=$(sed -n 's/^gitdir: //p' .git)
+    if [[ -z "${gitdir}" ]]; then
+        return 1
+    fi
+
+    # Walk up from gitdir to find the parent repo root
+    # gitdir is typically: ../../.git/modules/<submodule-name>
+    local parent_git_dir
+    parent_git_dir=$(cd "$(dirname "${gitdir}")" && pwd)
+    # Navigate up past .git/modules/<name> to reach the parent work tree
+    local parent_repo
+    parent_repo=$(git -C "${parent_git_dir}" rev-parse --show-toplevel 2>/dev/null) || return 1
+
+    # Read .gitmodules from the parent to find the submodule's URL
+    local submodule_url
+    submodule_url=$(git config --file "${parent_repo}/.gitmodules" --get-regexp 'submodule\..*\.url' 2>/dev/null | head -1 | awk '{print $2}') || return 1
+
+    # Scan sibling directories of the parent repo for monorepos
+    local parent_parent
+    parent_parent=$(dirname "${parent_repo}")
+
+    local candidates=()
+    for dir in "${parent_parent}"/*/; do
+        [[ -d "${dir}/.git" || -f "${dir}/.git" ]] || continue
+        [[ "$(realpath "${dir}")" == "$(realpath "${parent_repo}")" ]] && continue
+
+        # Check if this repo has .gitmodules referencing a similar URL
+        # or has subdirectories that could be the prefix
+        if [[ -f "${dir}/.gitmodules" ]] || find "${dir}" -maxdepth 2 -name ".gitmodules" -print -quit 2>/dev/null | grep -q .; then
+            candidates+=("$(realpath "${dir}")")
+        fi
+    done
+
+    if [[ ${#candidates[@]} -eq 1 ]]; then
+        echo "${candidates[0]}"
+        return 0
+    elif [[ ${#candidates[@]} -gt 1 ]]; then
+        echo "Multiple candidate monorepos found:" >&2
+        local i=1
+        for c in "${candidates[@]}"; do
+            echo "  ${i}) ${c}" >&2
+            i=$((i + 1))
+        done
+        echo "" >&2
+        read -rp "Choose [1-${#candidates[@]}]: " choice
+        echo "${candidates[$((choice - 1))]}"
+        return 0
+    fi
+
+    return 1
+}
+
+# Auto-detect the prefix by matching the submodule's origin URL against
+# .gitmodules entries in the monorepo.
+auto_detect_prefix() {
+    local monorepo_path="$1"
+
+    # Get the submodule's origin URL
+    local sub_url
+    sub_url=$(git remote get-url origin 2>/dev/null) || return 1
+
+    # Extract just the repo name from the URL for fuzzy matching
+    local sub_name
+    sub_name=$(basename "${sub_url}" .git)
+
+    # Check monorepo's .gitmodules for a matching submodule URL
+    if [[ -f "${monorepo_path}/.gitmodules" ]]; then
+        local prefix
+        prefix=$(git config --file "${monorepo_path}/.gitmodules" --get-regexp 'submodule\..*\.url' 2>/dev/null | while read -r key url; do
+            local entry_name
+            entry_name=$(basename "${url}" .git)
+            if [[ "${entry_name}" == "${sub_name}" ]]; then
+                # Extract the submodule path from the key
+                local sub_key="${key%.url}"
+                sub_key="${sub_key}.path"
+                git config --file "${monorepo_path}/.gitmodules" --get "${sub_key}" 2>/dev/null
+                break
+            fi
+        done) || true
+
+        if [[ -n "${prefix}" ]]; then
+            echo "${prefix}"
+            return 0
+        fi
+    fi
+
+    # Fallback: scan top-level directories for name match
+    for dir in "${monorepo_path}"/*/; do
+        local dirname
+        dirname=$(basename "${dir}")
+        if [[ "${dirname}" == "${sub_name}" ]]; then
+            echo "${dirname}"
+            return 0
+        fi
+    done
+
+    # Fallback: scan two levels deep
+    for dir in "${monorepo_path}"/*/*/; do
+        local dirname
+        dirname=$(basename "${dir}")
+        if [[ "${dirname}" == "${sub_name}" ]]; then
+            local rel_path="${dir#"${monorepo_path}/"}"
+            rel_path="${rel_path%/}"
+            echo "${rel_path}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# --- Subcommand: split --------------------------------------------------------
+
+cmd_split() {
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        echo "Usage: ${PROG} split [options] [source-branch]"
+        echo ""
+        echo "Split a monorepo subdirectory into a standalone branch."
+        echo "Run this from the root of the monorepo."
+        echo ""
+        echo "Options:"
+        echo "  --rejoin               Record split point for incremental future splits"
+        echo "  --prefix=<path>        Subdirectory prefix (default: from git config)"
+        echo "  --split-prefix=<name>  Branch prefix (default: bridge-split)"
+        echo ""
+        echo "If source-branch is omitted, the current branch is used."
+        echo ""
+        echo "WARNING: --rejoin modifies the source branch by adding a merge commit."
+        exit 0
+    fi
+
+    local rejoin=false
+    local source_branch=""
+    local prefix_override=""
+    local split_prefix_override=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --rejoin) rejoin=true; shift ;;
+            --prefix=*) prefix_override="${1#--prefix=}"; shift ;;
+            --split-prefix=*) split_prefix_override="${1#--split-prefix=}"; shift ;;
+            -*) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
+            *) source_branch="$1"; shift ;;
+        esac
+    done
+
+    # Resolve prefix — from override, git config, or auto-detect
+    local prefix=""
+    if [[ -n "${prefix_override}" ]]; then
+        prefix="${prefix_override}"
+    elif prefix=$(bridge_config_get "prefix" 2>/dev/null) && [[ -n "${prefix}" ]]; then
+        : # already set
+    else
+        # First-run auto-detection for monorepo side
+        echo "No bridge.prefix configured. Scanning for submodule directories..." >&2
+
+        # Look for directories that look like submodule content
+        local candidates=()
+        while IFS= read -r -d '' dir; do
+            candidates+=("${dir#./}")
+        done < <(find . -maxdepth 3 -name ".git" -not -path "./.git" -printf "%h\0" 2>/dev/null)
+
+        if [[ ${#candidates[@]} -eq 0 ]]; then
+            echo "ERROR: Could not auto-detect prefix. Use --prefix=<path>." >&2
+            exit 1
+        elif [[ ${#candidates[@]} -eq 1 ]]; then
+            prefix="${candidates[0]}"
+            echo "Auto-detected prefix: ${prefix}" >&2
+        else
+            echo "Multiple candidates found:" >&2
+            local i=1
+            for c in "${candidates[@]}"; do
+                echo "  ${i}) ${c}" >&2
+                i=$((i + 1))
+            done
+            read -rp "Choose [1-${#candidates[@]}]: " choice
+            prefix="${candidates[$((choice - 1))]}"
+        fi
+
+        bridge_config_set "prefix" "${prefix}"
+    fi
+
+    local split_prefix="${split_prefix_override:-$(bridge_config_get split-prefix "bridge-split")}"
+
+    # Default source branch to current branch
+    if [[ -z "${source_branch}" ]]; then
+        source_branch=$(git rev-parse --abbrev-ref HEAD)
+    fi
+
+    local split_branch="${split_prefix}/${source_branch}"
+
+    echo "==> Splitting '${prefix}' from '${source_branch}'"
+    echo "    into branch '${split_branch}'"
+    echo ""
+
+    # Validate prefix exists
+    if [[ ! -d "${prefix}" ]]; then
+        echo "ERROR: '${prefix}' not found. Run this from the monorepo root." >&2
+        exit 1
+    fi
+
+    # Build split command
+    local rejoin_flag=()
+    if [[ "${rejoin}" == true ]]; then
+        rejoin_flag=(--rejoin)
+    fi
+
+    local current_branch
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+    if [[ "${rejoin}" == true && "${current_branch}" != "${source_branch}" ]]; then
+        echo "    (checking out '${source_branch}' for --rejoin)"
+        git checkout "${source_branch}"
+        local split_sha
+        split_sha=$(git subtree split --prefix="${prefix}" --branch="${split_branch}" "${rejoin_flag[@]}")
+        echo "    (switching back to '${current_branch}')"
+        git checkout "${current_branch}"
+    else
+        local split_sha
+        split_sha=$(git subtree split --prefix="${prefix}" --branch="${split_branch}" "${rejoin_flag[@]}" "${source_branch}")
+    fi
+
+    echo ""
+    echo "==> Done. Branch '${split_branch}' now at ${split_sha}"
+    echo ""
+    echo "In your submodule repo, you can now do:"
+    echo "  ${PROG} setup ${PWD}"
+    echo "  git fetch $(bridge_config_get remote "bridge-upstream") ${split_branch}"
+}
+
+# --- Subcommand: pick ---------------------------------------------------------
+
+cmd_pick() {
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        echo "Usage: ${PROG} pick <monorepo-commit>"
+        echo ""
+        echo "Cherry-pick a monorepo commit into the current submodule branch."
+        echo "Translates the monorepo commit to its subtree-split equivalent."
+        echo ""
+        echo "Run this inside the submodule directory."
+        exit 0
+    fi
+
+    if [[ $# -lt 1 ]]; then
+        echo "ERROR: Missing required argument <monorepo-commit>" >&2
+        echo "Run '${PROG} pick --help' for usage." >&2
+        exit 1
+    fi
+
+    local mono_commit="$1"
+
+    # Read config
+    local remote
+    remote=$(bridge_config_get "remote") || {
+        echo "ERROR: No bridge remote configured. Run '${PROG} setup' first." >&2
+        exit 1
+    }
+    local monorepo_path
+    monorepo_path=$(resolve_monorepo_path) || exit 1
+    local prefix
+    prefix=$(bridge_config_get "prefix") || {
+        echo "ERROR: No bridge prefix configured. Run '${PROG} setup' first." >&2
+        exit 1
+    }
+
+    echo "==> Looking up monorepo commit ${mono_commit}"
+
+    # Verify the commit exists
+    local mono_full
+    mono_full=$(git -C "${monorepo_path}" rev-parse "${mono_commit}") || {
+        echo "ERROR: Commit '${mono_commit}' not found in monorepo at ${monorepo_path}" >&2
+        exit 1
+    }
+    local mono_subject
+    mono_subject=$(git -C "${monorepo_path}" log -1 --format="%s" "${mono_full}")
+    echo "    ${mono_full} ${mono_subject}"
+
+    # Check if it touches files under the prefix
+    local changed_files
+    changed_files=$(git -C "${monorepo_path}" diff-tree --no-commit-id --name-only -r "${mono_full}" -- "${prefix}" 2>/dev/null || true)
+
+    if [[ -z "${changed_files}" ]]; then
+        echo ""
+        echo "WARNING: Commit ${mono_commit} does not touch any files under ${prefix}."
+        echo "         Nothing to cherry-pick."
+        exit 0
+    fi
+
+    echo ""
+    echo "    Files changed under ${prefix}:"
+    echo "${changed_files}" | sed 's/^/      /'
+
+    # Find the corresponding subtree-split commit
+    echo ""
+    echo "==> Finding corresponding subtree-split commit..."
+
+    local found_sha=""
+    while IFS= read -r split_branch; do
+        split_branch="${split_branch#"${split_branch%%[![:space:]]*}"}"  # trim leading whitespace
+        local match
+        match=$(git log "${split_branch}" --format="%H" --grep="${mono_subject}" --fixed-strings -1 2>/dev/null || true)
+        if [[ -n "${match}" ]]; then
+            found_sha="${match}"
+            echo "    Found: ${found_sha} on ${split_branch}"
+            break
+        fi
+    done < <(git branch -r --list "${remote}/*")
+
+    if [[ -z "${found_sha}" ]]; then
+        echo ""
+        echo "ERROR: Could not find a matching subtree-split commit." >&2
+        echo "       Make sure you have run '${PROG} split' in the monorepo" >&2
+        echo "       for the branch containing commit ${mono_commit}, then" >&2
+        echo "       'git fetch ${remote}' here." >&2
+        exit 1
+    fi
+
+    echo ""
+    echo "==> Cherry-picking ${found_sha}..."
+
+    if is_blobless_remote "${remote}"; then
+        echo "    (using format-patch/am for blobless remote)"
+        git -C "${monorepo_path}" format-patch -1 "${found_sha}" --stdout | git am
+    else
+        git cherry-pick "${found_sha}"
+    fi
+
+    echo ""
+    echo "==> Done! Commit applied to $(git rev-parse --abbrev-ref HEAD)."
+}
+
+# --- Subcommand: export ------------------------------------------------------
+
+cmd_export() {
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        echo "Usage: ${PROG} export <base-ref> [target-branch]"
+        echo ""
+        echo "Export commits from the submodule into the monorepo."
+        echo "Run this inside the submodule directory."
+        echo ""
+        echo "Arguments:"
+        echo "  base-ref        Base ref for the commit range (e.g., origin/main)"
+        echo "  target-branch   Branch to create in monorepo (default: current branch name)"
+        exit 0
+    fi
+
+    if [[ $# -lt 1 ]]; then
+        echo "ERROR: Missing required argument <base-ref>" >&2
+        echo "Run '${PROG} export --help' for usage." >&2
+        exit 1
+    fi
+
+    local base_ref="$1"
+    local target_branch="${2:-$(git rev-parse --abbrev-ref HEAD)}"
+
+    # Read config
+    local monorepo_path
+    monorepo_path=$(resolve_monorepo_path) || exit 1
+    local prefix
+    prefix=$(bridge_config_get "prefix") || {
+        echo "ERROR: No bridge prefix configured. Run '${PROG} setup' first." >&2
+        exit 1
+    }
+
+    # Validate monorepo path and prefix
+    if [[ ! -d "${monorepo_path}/${prefix}" ]]; then
+        echo "ERROR: '${monorepo_path}/${prefix}' not found." >&2
+        echo "       Is '${monorepo_path}' the root of the monorepo?" >&2
+        exit 1
+    fi
+
+    # Count commits
+    local commit_count
+    commit_count=$(git rev-list --count "${base_ref}..HEAD")
+    if [[ "${commit_count}" -eq 0 ]]; then
+        echo "No commits to export (${base_ref}..HEAD is empty)."
+        exit 0
+    fi
+
+    echo "==> Exporting ${commit_count} commit(s) from $(git rev-parse --abbrev-ref HEAD)"
+    echo "    Range: ${base_ref}..HEAD"
+    echo ""
+
+    # Generate patches
+    local patch_dir
+    patch_dir="$(mktemp -d)"
+    trap 'rm -rf "${patch_dir:-}" "${apply_dir:-}"' EXIT
+
+    git format-patch "${base_ref}..HEAD" -o "${patch_dir}" --quiet
+    local patch_count
+    patch_count=$(find "${patch_dir}" -name "*.patch" 2>/dev/null | wc -l)
+    echo "    Generated ${patch_count} patch(es)"
+
+    # Set up target branch in monorepo
+    echo ""
+    echo "==> Applying to monorepo at ${monorepo_path}"
+    echo "    Target branch: ${target_branch}"
+
+    local mono_current_branch
+    mono_current_branch=$(git -C "${monorepo_path}" rev-parse --abbrev-ref HEAD)
+
+    if git -C "${monorepo_path}" rev-parse --verify "${target_branch}" &>/dev/null; then
+        echo "    Branch '${target_branch}' exists, checking it out"
+        git -C "${monorepo_path}" checkout "${target_branch}"
+    else
+        echo "    Creating branch '${target_branch}' from '${mono_current_branch}'"
+        git -C "${monorepo_path}" checkout -b "${target_branch}"
+    fi
+
+    # Filter out already-applied patches
+    echo ""
+    echo "==> Checking for already-applied commits..."
+    local apply_dir
+    apply_dir="$(mktemp -d)"
+
+    local skipped=0
+    for patch in "${patch_dir}"/*.patch; do
+        [[ -f "${patch}" ]] || continue
+        local subject
+        subject=$(sed -n 's/^Subject: \(\[PATCH[^]]*\] \)\{0,1\}//p' "${patch}" | head -1)
+        if git -C "${monorepo_path}" log "${target_branch}" --format="%s" --fixed-strings --grep="${subject}" -1 | grep -qF "${subject}"; then
+            echo "    SKIP (already applied): ${subject}"
+            skipped=$((skipped + 1))
+        else
+            cp "${patch}" "${apply_dir}/"
+        fi
+    done
+
+    local new_count
+    new_count=$(find "${apply_dir}" -name "*.patch" 2>/dev/null | wc -l)
+
+    if [[ "${new_count}" -eq 0 ]]; then
+        echo ""
+        echo "==> All ${patch_count} commit(s) already applied. Nothing to do."
+        exit 0
+    fi
+
+    if [[ "${skipped}" -gt 0 ]]; then
+        echo ""
+        echo "    Skipped ${skipped}, applying ${new_count} new commit(s)"
+    fi
+
+    # Apply patches
+    echo ""
+    echo "==> Applying patches under ${prefix}/"
+    git -C "${monorepo_path}" am --directory="${prefix}" "${apply_dir}"/*.patch
+
+    echo ""
+    echo "==> Done! ${new_count} commit(s) applied to '${target_branch}' in monorepo."
+    if [[ "${skipped}" -gt 0 ]]; then
+        echo "    (${skipped} already-applied commit(s) skipped)"
+    fi
+    echo ""
+    echo "    cd ${monorepo_path}"
+    echo "    git log --oneline -${new_count}"
+}
+
+# --- Main dispatcher ---------------------------------------------------------
+
+main() {
+    if [[ $# -eq 0 ]]; then
+        echo "Usage: ${PROG} <command> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  setup    Set up the bridge (run from submodule)"
+        echo "  split    Split monorepo subdirectory into standalone branch"
+        echo "  pick     Cherry-pick a monorepo commit into submodule"
+        echo "  export   Export submodule commits to monorepo"
+        echo ""
+        echo "Run '${PROG} <command> --help' for command-specific usage."
+        exit 1
+    fi
+
+    local cmd="$1"
+    shift
+
+    case "${cmd}" in
+        setup)  cmd_setup "$@" ;;
+        split)  cmd_split "$@" ;;
+        pick)   cmd_pick "$@" ;;
+        export) cmd_export "$@" ;;
+        -h|--help)
+            main  # re-run with no args to show help
+            ;;
+        --version)
+            echo "${PROG} ${VERSION}"
+            ;;
+        *)
+            echo "ERROR: Unknown command '${cmd}'" >&2
+            echo "Run '${PROG} --help' for usage." >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
