@@ -479,8 +479,8 @@ teardown() {
     # Verify export worked
     [ -f "reset-me.txt" ]
 
-    # Reset via CLI using --target flag
-    run "${MONOREPO_BRIDGE}" reset --target="${base_sha}" main
+    # Reset via CLI using --target flag (--yes for non-interactive)
+    run "${MONOREPO_BRIDGE}" reset --target="${base_sha}" --yes main
     [ "$status" -eq 0 ]
     [[ "$output" == *"All checks passed"* ]]
 
@@ -682,8 +682,8 @@ teardown() {
     split_tree=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main^{tree}")
     [ "${mono_subtree}" = "${split_tree}" ]
 
-    # 5. Reset back to base via CLI
-    "${MONOREPO_BRIDGE}" reset --target="${base_sha}" main
+    # 5. Reset back to base via CLI (--yes for non-interactive)
+    "${MONOREPO_BRIDGE}" reset --target="${base_sha}" --yes main
 
     # 6. Verify reset — all three in sync, file gone
     split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")

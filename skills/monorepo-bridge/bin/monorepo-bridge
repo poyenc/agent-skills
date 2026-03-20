@@ -24,11 +24,22 @@ VERSION="0.1.0"
 # --- Interactive helpers ------------------------------------------------------
 
 # Prompt user for confirmation. Returns 0 (yes) or 1 (no).
-# In non-interactive mode (stdin is not a terminal), defaults to yes.
+# In non-interactive mode, defaults to yes for safe operations.
+# Destructive operations (--destructive flag) FAIL in non-interactive mode
+# instead of auto-confirming.
 confirm_prompt() {
+    local destructive=false
+    if [[ "${1:-}" == "--destructive" ]]; then
+        destructive=true
+        shift
+    fi
     local prompt="$1"
     if [[ ! -t 0 ]]; then
-        # Non-interactive: default to yes
+        if [[ "${destructive}" == true ]]; then
+            echo "${prompt} — REFUSED (destructive operation in non-interactive mode)" >&2
+            return 1
+        fi
+        # Non-interactive: default to yes for safe operations
         echo "${prompt} [Y/n] (auto-confirmed, non-interactive)" >&2
         return 0
     fi
@@ -100,6 +111,29 @@ resolve_monorepo_path() {
     # Strip file:// prefix if present (from blobless setup)
     path="${path#file://}"
     echo "${path}"
+}
+
+# Check if a repo has a dirty working tree (uncommitted changes).
+# Takes an optional path argument; defaults to the current repo.
+# Returns 0 if dirty, 1 if clean.
+is_dirty_worktree() {
+    local repo_path="${1:-.}"
+    local status
+    status=$(git -C "${repo_path}" status --porcelain 2>/dev/null)
+    [[ -n "${status}" ]]
+}
+
+# Guard: abort if the given repo has uncommitted changes.
+# Usage: require_clean_worktree "/path/to/repo" "operation name"
+require_clean_worktree() {
+    local repo_path="${1:-.}"
+    local operation="${2:-operation}"
+    if is_dirty_worktree "${repo_path}"; then
+        echo "ERROR: Uncommitted changes in $(realpath "${repo_path}")." >&2
+        echo "       Commit or stash them before running ${operation}." >&2
+        git -C "${repo_path}" status --short >&2
+        return 1
+    fi
 }
 
 # Detect if a remote is blobless (file:// URL from partial clone setup).
@@ -391,6 +425,10 @@ auto_detect_monorepo_path() {
         if [[ -z "${choice}" ]]; then
             return 1
         fi
+        if ! [[ "${choice}" =~ ^[0-9]+$ ]] || [[ "${choice}" -lt 1 || "${choice}" -gt ${#candidates[@]} ]]; then
+            echo "ERROR: Invalid choice '${choice}'. Enter a number between 1 and ${#candidates[@]}." >&2
+            return 1
+        fi
         echo "${candidates[$((choice - 1))]}"
         return 0
     fi
@@ -554,6 +592,10 @@ cmd_split() {
                 echo "ERROR: No selection made (non-interactive). Use --prefix=<path>." >&2
                 exit 1
             fi
+            if ! [[ "${choice}" =~ ^[0-9]+$ ]] || [[ "${choice}" -lt 1 || "${choice}" -gt ${#candidates[@]} ]]; then
+                echo "ERROR: Invalid choice '${choice}'. Enter a number between 1 and ${#candidates[@]}." >&2
+                exit 1
+            fi
             prefix="${candidates[$((choice - 1))]}"
         fi
 
@@ -690,6 +732,9 @@ cmd_export() {
     echo "    Target branch:  ${target_branch}"
     echo ""
 
+    # Guard: monorepo must be clean (we may need to checkout target_branch)
+    require_clean_worktree "${monorepo_path}" "export" || exit 1
+
     # Step 1: Fetch submodule commits into monorepo object store (no remote added)
     local sub_toplevel
     sub_toplevel=$(git rev-parse --show-toplevel)
@@ -713,8 +758,22 @@ cmd_export() {
 
     echo "==> Merging into monorepo branch '${target_branch}'..."
     local merge_msg="Merge ${current_branch} (${new_count} commit(s)) into ${target_branch}"
-    git -C "${monorepo_path}" merge -s subtree --allow-unrelated-histories \
-        "${split_branch}" -m "${merge_msg}" 2>&1
+    if ! git -C "${monorepo_path}" merge -s subtree -Xsubtree="${prefix}" \
+        --allow-unrelated-histories \
+        "${split_branch}" -m "${merge_msg}" 2>&1; then
+        echo "" >&2
+        echo "==> MERGE CONFLICT — export paused." >&2
+        echo "" >&2
+        echo "    Resolve conflicts in the monorepo working tree:" >&2
+        echo "      cd ${monorepo_path}" >&2
+        echo "" >&2
+        echo "    Then complete the merge:" >&2
+        echo "      git merge --continue" >&2
+        echo "" >&2
+        echo "    Or abort to return to the pre-export state:" >&2
+        echo "      git merge --abort" >&2
+        exit 1
+    fi
 
     # Restore monorepo to its original branch
     if [[ "${need_restore}" == true ]]; then
@@ -767,6 +826,9 @@ cmd_sync() {
     fi
 
     local mono_branch_override="${1:-}"
+
+    # Guard: submodule must be clean before rebase
+    require_clean_worktree "." "sync" || exit 1
 
     # Read config (auto-detect from existing remotes if needed)
     require_bridge_config || exit 1
@@ -943,8 +1005,63 @@ cmd_sync() {
         return 0
     fi
 
-    echo "==> Rebasing local work onto updated split branch..."
-    git rebase "${remote_split}" 2>&1
+    # Detect upstream rewrite: check if old split tip is ancestor of new split tip.
+    # If not, the monorepo branch was force-pushed/rebased — plain rebase would
+    # produce duplicate commits.
+    local old_split_sha="${local_sha}"
+    # The "old" split tip is the merge-base between our HEAD and the remote split,
+    # which represents the last sync point.
+    local merge_base
+    merge_base=$(git merge-base HEAD "${remote_split}" 2>/dev/null || echo "")
+
+    if [[ -z "${merge_base}" ]]; then
+        echo "WARNING: No common ancestor between HEAD and ${remote_split}." >&2
+        echo "         The upstream history appears to be completely unrelated." >&2
+        echo "         Consider starting a fresh branch from ${remote_split}:" >&2
+        echo "           git checkout -b ${current_branch} ${remote_split}" >&2
+        exit 1
+    fi
+
+    # Count local commits (on top of merge-base) and upstream commits
+    local local_count upstream_count
+    local_count=$(git rev-list --count "${merge_base}..HEAD")
+    upstream_count=$(git rev-list --count "${merge_base}..${remote_split}")
+
+    # Check if the old split tip is an ancestor of the new one. If the merge-base
+    # is not reachable from the new remote split, the upstream was rewritten.
+    if [[ "${upstream_count}" -gt 0 ]]; then
+        local old_in_new
+        old_in_new=$(git merge-base --is-ancestor "${merge_base}" "${remote_split}" 2>/dev/null && echo yes || echo no)
+        if [[ "${old_in_new}" == "no" ]]; then
+            echo "WARNING: Upstream rewrite detected." >&2
+            echo "         The monorepo branch was force-pushed or rebased." >&2
+            echo "         Plain rebase may produce duplicate commits." >&2
+            echo "" >&2
+            echo "    Options:" >&2
+            echo "      1) Start fresh:  git checkout -b ${current_branch}-new ${remote_split}" >&2
+            echo "         then cherry-pick your ${local_count} local commit(s)" >&2
+            echo "      2) Rebase --onto: git rebase --onto ${remote_split} ${merge_base} ${current_branch}" >&2
+            echo "" >&2
+            if ! confirm_prompt --destructive "    Proceed with plain rebase anyway?"; then
+                echo "    Aborted. Use one of the options above." >&2
+                exit 1
+            fi
+        fi
+    fi
+
+    # Use --rebase-merges to preserve any local merge commits.
+    echo "==> Rebasing ${local_count} local commit(s) onto ${upstream_count} new upstream commit(s)..."
+    if ! git rebase --rebase-merges "${remote_split}" 2>&1; then
+        echo "" >&2
+        echo "==> REBASE CONFLICT — sync paused." >&2
+        echo "" >&2
+        echo "    Resolve conflicts in the working tree, then:" >&2
+        echo "      git rebase --continue" >&2
+        echo "" >&2
+        echo "    Or abort the rebase to return to the pre-sync state:" >&2
+        echo "      git rebase --abort" >&2
+        exit 1
+    fi
 
     local new_head
     new_head=$(git rev-parse HEAD)
@@ -1059,6 +1176,7 @@ cmd_reset() {
         echo ""
         echo "Options:"
         echo "  --target=<sha>   Commit SHA to reset to (skips interactive prompt)"
+        echo "  --yes            Skip confirmation prompt (required for non-interactive use)"
         echo ""
         echo "Steps performed:"
         echo "  1. Ask user for the new HEAD commit (or use --target)"
@@ -1074,10 +1192,12 @@ cmd_reset() {
 
     local mono_branch_override=""
     local target_sha_override=""
+    local skip_confirm=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --target=*) target_sha_override="${1#--target=}"; shift ;;
+            --yes) skip_confirm=true; shift ;;
             -*) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
             *) mono_branch_override="$1"; shift ;;
         esac
@@ -1136,9 +1256,11 @@ cmd_reset() {
     echo "    Split branch:     ${split_branch}"
     echo "    Monorepo branch:  ${mono_branch}"
 
-    if ! confirm_prompt "    Proceed with reset?"; then
-        echo "    Aborted." >&2
-        exit 1
+    if [[ "${skip_confirm}" != true ]]; then
+        if ! confirm_prompt --destructive "    Proceed with reset?"; then
+            echo "    Aborted." >&2
+            exit 1
+        fi
     fi
 
     # Step 1: Reset submodule branch
@@ -1166,12 +1288,24 @@ cmd_reset() {
     target_tree=$(git rev-parse "${target_sha}^{tree}")
 
     local mono_target=""
+    local scan_limit=500
+    local scanned=0
     while IFS= read -r sha; do
         local subtree
         subtree=$(git -C "${monorepo_path}" rev-parse "${sha}:${prefix}" 2>/dev/null || true)
         if [[ "${subtree}" == "${target_tree}" ]]; then
             mono_target="${sha}"
             break
+        fi
+        scanned=$((scanned + 1))
+        if [[ $((scanned % 100)) -eq 0 ]]; then
+            echo "    ... scanned ${scanned} commits" >&2
+        fi
+        if [[ "${scanned}" -ge "${scan_limit}" ]]; then
+            echo "ERROR: Scanned ${scan_limit} commits without finding a match." >&2
+            echo "       The target commit may be too far back in history." >&2
+            echo "       Try a more recent --target SHA." >&2
+            exit 1
         fi
     done < <(git -C "${monorepo_path}" log --format="%H" "${mono_branch}")
 
@@ -1204,19 +1338,23 @@ cmd_reset() {
 
 # --- Main dispatcher ---------------------------------------------------------
 
+show_usage() {
+    echo "Usage: ${PROG} <command> [args]"
+    echo ""
+    echo "Commands:"
+    echo "  setup    Set up the bridge (run from submodule)"
+    echo "  split    Split monorepo subdirectory into standalone branch"
+    echo "  export   Export submodule commits to monorepo (fetch + subtree merge)"
+    echo "  sync     Pull latest monorepo changes into submodule (split + rebase)"
+    echo "  reset    Reset all three branches to undo an export"
+    echo "  verify   Verify all three branches are in sync"
+    echo ""
+    echo "Run '${PROG} <command> --help' for command-specific usage."
+}
+
 main() {
     if [[ $# -eq 0 ]]; then
-        echo "Usage: ${PROG} <command> [args]"
-        echo ""
-        echo "Commands:"
-        echo "  setup    Set up the bridge (run from submodule)"
-        echo "  split    Split monorepo subdirectory into standalone branch"
-        echo "  export   Export submodule commits to monorepo (fetch + subtree merge)"
-        echo "  sync     Pull latest monorepo changes into submodule (split + rebase)"
-        echo "  reset    Reset all three branches to undo an export"
-        echo "  verify   Verify all three branches are in sync"
-        echo ""
-        echo "Run '${PROG} <command> --help' for command-specific usage."
+        show_usage
         exit 1
     fi
 
@@ -1231,7 +1369,8 @@ main() {
         reset)  cmd_reset "$@" ;;
         verify) cmd_verify "$@" ;;
         -h|--help)
-            main
+            show_usage
+            exit 0
             ;;
         --version)
             echo "${PROG} ${VERSION}"
