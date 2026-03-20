@@ -11,6 +11,8 @@
 #   split    Split a monorepo subdirectory into a standalone branch
 #   export   Export submodule commits into the monorepo (fetch + subtree merge)
 #   sync     Pull latest monorepo changes into the submodule (split + rebase)
+#   reset    Reset all three branches to undo an export
+#   verify   Verify all three branches are in sync
 #
 # Run 'monorepo-bridge <command> --help' for command-specific usage.
 
@@ -617,15 +619,18 @@ cmd_export() {
         echo ""
         echo "Steps performed:"
         echo "  1. Fetch submodule commits into monorepo (no remote added)"
-        echo "  2. Update the split branch to match submodule HEAD"
-        echo "  3. Subtree-merge split branch into monorepo target branch"
+        echo "  2. Update split branch to fetched commits (identical hashes)"
+        echo "  3. Subtree-merge split branch into monorepo tracking branch"
+        echo ""
+        echo "Preserves identical commit hashes between split and submodule."
+        echo "Creates a merge commit on the monorepo branch."
         echo ""
         echo "Arguments:"
-        echo "  target-branch   Branch in monorepo to merge into (default: current branch name)"
+        echo "  target-branch   Branch in monorepo to apply to (default: tracked branch)"
         exit 0
     fi
 
-    local target_branch="${1:-$(git rev-parse --abbrev-ref HEAD)}"
+    local target_branch_override="${1:-}"
 
     # Read config (auto-detect from existing remotes if needed)
     require_bridge_config || exit 1
@@ -643,61 +648,71 @@ cmd_export() {
         exit 1
     fi
 
-    local sub_branch
-    sub_branch=$(git rev-parse --abbrev-ref HEAD)
+    # Resolve target branch
+    local current_branch
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+    local target_branch=""
+    if [[ -n "${target_branch_override}" ]]; then
+        target_branch="${target_branch_override}"
+    elif target_branch=$(git config --local --get "branch.${current_branch}.bridge-tracks" 2>/dev/null) && [[ -n "${target_branch}" ]]; then
+        : # already set
+    else
+        target_branch="${current_branch}"
+    fi
+
     local sub_sha
     sub_sha=$(git rev-parse HEAD)
     local split_branch="${split_prefix}/${target_branch}"
 
-    # Check if split branch already matches submodule HEAD
+    # Find the base: where split branch currently points (last exported commit)
     local split_sha=""
     split_sha=$(git -C "${monorepo_path}" rev-parse "${split_branch}" 2>/dev/null || echo "")
+
     if [[ "${split_sha}" == "${sub_sha}" ]]; then
         echo "==> Split branch '${split_branch}' already up to date with submodule HEAD."
         echo "    Nothing to export."
         exit 0
     fi
 
-    echo "==> Exporting from submodule branch '${sub_branch}'"
+    # Count new commits
+    local new_count=0
+    if [[ -n "${split_sha}" ]]; then
+        new_count=$(git rev-list --count "${split_sha}..HEAD")
+    else
+        echo "ERROR: Split branch '${split_branch}' not found in monorepo." >&2
+        echo "       Run '${PROG} split' in the monorepo first, or '${PROG} sync' to set up." >&2
+        exit 1
+    fi
+
+    echo "==> Exporting ${new_count} commit(s) from '${current_branch}'"
+    echo "    Base (split):   ${split_sha:0:12}"
     echo "    Submodule HEAD: ${sub_sha:0:12}"
     echo "    Target branch:  ${target_branch}"
     echo ""
 
-    # Step 1: Fetch submodule commits into monorepo object store
+    # Step 1: Fetch submodule commits into monorepo object store (no remote added)
     local sub_toplevel
     sub_toplevel=$(git rev-parse --show-toplevel)
-    echo "==> Step 1: Fetching submodule commits into monorepo..."
-    git -C "${monorepo_path}" fetch "${sub_toplevel}" "${sub_branch}" 2>&1
+    echo "==> Fetching submodule commits into monorepo..."
+    git -C "${monorepo_path}" fetch "${sub_toplevel}" "${current_branch}" 2>&1
 
     # Step 2: Update split branch to point at fetched commits (identical hashes)
     echo ""
-    echo "==> Step 2: Updating split branch '${split_branch}'..."
+    echo "==> Updating split branch '${split_branch}'..."
     git -C "${monorepo_path}" branch -f "${split_branch}" FETCH_HEAD 2>&1
-    echo "    Split branch now at $(git -C "${monorepo_path}" rev-parse "${split_branch}")"
 
-    # Step 3: Subtree-merge split branch into monorepo target branch
-    echo ""
-    echo "==> Step 3: Subtree-merging into '${target_branch}'..."
-
+    # Step 3: Subtree-merge split branch into monorepo tracking branch
     local mono_current_branch
     mono_current_branch=$(git -C "${monorepo_path}" rev-parse --abbrev-ref HEAD)
     local need_restore=false
 
-    if git -C "${monorepo_path}" rev-parse --verify "${target_branch}" &>/dev/null; then
-        if [[ "${mono_current_branch}" != "${target_branch}" ]]; then
-            git -C "${monorepo_path}" checkout "${target_branch}" 2>&1
-            need_restore=true
-        fi
-    else
-        echo "    Creating branch '${target_branch}' from '${mono_current_branch}'"
-        git -C "${monorepo_path}" checkout -b "${target_branch}" 2>&1
+    if [[ "${mono_current_branch}" != "${target_branch}" ]]; then
+        git -C "${monorepo_path}" checkout "${target_branch}" 2>&1
         need_restore=true
     fi
 
-    # Get the latest commit message from the submodule for the merge
-    local merge_msg
-    merge_msg=$(git log -1 --format="%s" HEAD)
-
+    echo "==> Merging into monorepo branch '${target_branch}'..."
+    local merge_msg="Merge ${current_branch} (${new_count} commit(s)) into ${target_branch}"
     git -C "${monorepo_path}" merge -s subtree --allow-unrelated-histories \
         "${split_branch}" -m "${merge_msg}" 2>&1
 
@@ -707,10 +722,25 @@ cmd_export() {
     fi
 
     echo ""
-    echo "==> Done! Exported to '${target_branch}' in monorepo."
+    echo "==> Done! Exported ${new_count} commit(s) to '${target_branch}' in monorepo."
     echo ""
     echo "    cd ${monorepo_path}"
-    echo "    git log --oneline -3 ${target_branch}"
+    git -C "${monorepo_path}" log --oneline -$((new_count + 2)) "${target_branch}"
+
+    # Post-export: verify sync
+    echo ""
+    echo "==> Verifying sync..."
+    cmd_verify "${target_branch}" || true
+
+    # Offer to push (only if monorepo has a remote)
+    local mono_remote
+    mono_remote=$(git -C "${monorepo_path}" remote 2>/dev/null | head -1)
+    if [[ -n "${mono_remote}" ]]; then
+        echo ""
+        if confirm_prompt "Push '${target_branch}' to ${mono_remote}?"; then
+            git -C "${monorepo_path}" push "${mono_remote}" "${target_branch}" 2>&1
+        fi
+    fi
 }
 
 # --- Subcommand: sync ---------------------------------------------------------
@@ -847,21 +877,58 @@ cmd_sync() {
         git -C "${monorepo_path}" branch "${mono_branch}" "${mono_remote}/${mono_branch}" 2>&1
     else
         echo "    Updating ${mono_branch}: ${local_tip:0:12} -> ${remote_tip:0:12}"
-        git -C "${monorepo_path}" branch -f "${mono_branch}" "${mono_remote}/${mono_branch}" 2>&1
+        # Check if branch is checked out (branch -f fails on checked-out branches)
+        local mono_checked_out
+        mono_checked_out=$(git -C "${monorepo_path}" branch --show-current 2>/dev/null || echo "")
+        if [[ "${mono_checked_out}" == "${mono_branch}" ]]; then
+            git -C "${monorepo_path}" merge --ff-only "${mono_remote}/${mono_branch}" 2>&1
+        else
+            git -C "${monorepo_path}" branch -f "${mono_branch}" "${mono_remote}/${mono_branch}" 2>&1
+        fi
     fi
 
-    # Step 3: Re-split the updated branch
+    # Step 3: Re-split the updated branch (skip if already current)
+    #
+    # We avoid `subtree split --branch=<name>` because it has an ancestry
+    # check that fails after export. Export sets the split branch to a
+    # submodule commit (via branch -f) to preserve hash identity. When sync
+    # later re-splits, the new split commits have a different lineage than
+    # the submodule commit, so the ancestry check fails with:
+    #   "fatal: branch '<name>' is not an ancestor of commit '<sha>'"
+    # Instead, we split without --branch (outputs SHA to stdout) and then
+    # force-update the branch ourselves.
     echo ""
-    echo "==> Re-splitting '${prefix}' from '${mono_branch}'..."
-    git -C "${monorepo_path}" subtree split \
-        --prefix="${prefix}" \
-        --branch="${split_branch_name}" \
-        "${mono_branch}" 2>&1
+    local existing_split_sha=""
+    existing_split_sha=$(git -C "${monorepo_path}" rev-parse "${split_branch_name}" 2>/dev/null || echo "")
+    if [[ -n "${existing_split_sha}" ]]; then
+        local split_tree mono_subtree_tree
+        split_tree=$(git -C "${monorepo_path}" rev-parse "${split_branch_name}^{tree}" 2>/dev/null || echo "")
+        mono_subtree_tree=$(git -C "${monorepo_path}" rev-parse "${mono_branch}:${prefix}" 2>/dev/null || echo "")
+        if [[ -n "${split_tree}" && "${split_tree}" == "${mono_subtree_tree}" ]]; then
+            echo "==> Split branch '${split_branch_name}' is already up to date. Skipping re-split."
+        else
+            echo "==> Re-splitting '${prefix}' from '${mono_branch}'..."
+            local new_split_sha
+            new_split_sha=$(git -C "${monorepo_path}" subtree split \
+                --prefix="${prefix}" "${mono_branch}")
+            git -C "${monorepo_path}" branch -f "${split_branch_name}" "${new_split_sha}"
+        fi
+    else
+        echo "==> Splitting '${prefix}' from '${mono_branch}'..."
+        local new_split_sha
+        new_split_sha=$(git -C "${monorepo_path}" subtree split \
+            --prefix="${prefix}" "${mono_branch}")
+        git -C "${monorepo_path}" branch -f "${split_branch_name}" "${new_split_sha}"
+    fi
 
     # Step 4: Fetch the updated split into the submodule
     echo ""
     echo "==> Fetching updated split branch..."
-    git fetch "${remote}" 2>&1
+    if is_blobless_remote "${remote}"; then
+        git fetch --filter=blob:none "${remote}" 2>&1
+    else
+        git fetch "${remote}" 2>&1
+    fi
 
     # Step 5: Rebase local work onto updated split branch
     echo ""
@@ -889,6 +956,252 @@ cmd_sync() {
     echo "==> Sync complete."
 }
 
+# --- Subcommand: verify -------------------------------------------------------
+
+cmd_verify() {
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        echo "Usage: ${PROG} verify [monorepo-branch]"
+        echo ""
+        echo "Verify that all three branches (submodule, split, monorepo subtree)"
+        echo "are in sync. Run this inside the submodule directory."
+        echo ""
+        echo "Checks:"
+        echo "  1. Split branch commit == Submodule HEAD (same hash)"
+        echo "  2. Monorepo subtree tree == Split branch tree (same tree object)"
+        echo ""
+        echo "Arguments:"
+        echo "  monorepo-branch   Branch in monorepo to check (default: tracked branch)"
+        exit 0
+    fi
+
+    local mono_branch_override="${1:-}"
+
+    # Read config
+    require_bridge_config || exit 1
+    local monorepo_path
+    monorepo_path=$(resolve_monorepo_path) || exit 1
+    local prefix
+    prefix=$(bridge_config_get "prefix")
+    local split_prefix
+    split_prefix=$(bridge_config_get "split-prefix" "bridge-split")
+
+    # Resolve monorepo branch
+    local current_branch
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+    local mono_branch=""
+    if [[ -n "${mono_branch_override}" ]]; then
+        mono_branch="${mono_branch_override}"
+    elif mono_branch=$(git config --local --get "branch.${current_branch}.bridge-tracks" 2>/dev/null) && [[ -n "${mono_branch}" ]]; then
+        : # already set
+    else
+        echo "ERROR: No tracked monorepo branch. Specify it explicitly:" >&2
+        echo "       ${PROG} verify <monorepo-branch>" >&2
+        exit 1
+    fi
+
+    local split_branch="${split_prefix}/${mono_branch}"
+    local pass=true
+
+    echo "==> Verifying bridge sync"
+    echo "    Submodule branch: ${current_branch}"
+    echo "    Split branch:     ${split_branch}"
+    echo "    Monorepo branch:  ${mono_branch}"
+    echo "    Prefix:           ${prefix}"
+    echo ""
+
+    # Check 1: Split branch commit == Submodule HEAD
+    local split_sha sub_sha
+    split_sha=$(git -C "${monorepo_path}" rev-parse "${split_branch}" 2>/dev/null || echo "NOT_FOUND")
+    sub_sha=$(git rev-parse HEAD)
+
+    echo "    Split branch SHA:     ${split_sha:0:12}"
+    echo "    Submodule HEAD SHA:   ${sub_sha:0:12}"
+    if [[ "${split_sha}" == "${sub_sha}" ]]; then
+        echo "    CHECK 1 PASS: same commit hash"
+    else
+        echo "    CHECK 1 FAIL: commit hashes differ"
+        pass=false
+    fi
+
+    echo ""
+
+    # Check 2: Monorepo subtree tree == Split branch tree
+    local mono_subtree split_tree
+    mono_subtree=$(git -C "${monorepo_path}" rev-parse "${mono_branch}:${prefix}" 2>/dev/null || echo "NOT_FOUND")
+    split_tree=$(git -C "${monorepo_path}" rev-parse "${split_branch}^{tree}" 2>/dev/null || echo "NOT_FOUND")
+
+    echo "    Monorepo subtree tree: ${mono_subtree:0:12}"
+    echo "    Split branch tree:     ${split_tree:0:12}"
+    if [[ "${mono_subtree}" == "${split_tree}" ]]; then
+        echo "    CHECK 2 PASS: same tree object"
+    else
+        echo "    CHECK 2 FAIL: tree objects differ"
+        pass=false
+    fi
+
+    echo ""
+    if [[ "${pass}" == true ]]; then
+        echo "==> All checks passed. Branches are in sync."
+    else
+        echo "==> FAILED: Branches are out of sync."
+        exit 1
+    fi
+}
+
+# --- Subcommand: reset --------------------------------------------------------
+
+cmd_reset() {
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        echo "Usage: ${PROG} reset [options] [monorepo-branch]"
+        echo ""
+        echo "Reset all three branches (submodule, split, monorepo) to undo an export."
+        echo "Run this inside the submodule directory."
+        echo ""
+        echo "Options:"
+        echo "  --target=<sha>   Commit SHA to reset to (skips interactive prompt)"
+        echo ""
+        echo "Steps performed:"
+        echo "  1. Ask user for the new HEAD commit (or use --target)"
+        echo "  2. Reset submodule branch (git reset --hard)"
+        echo "  3. Reset split branch to the same SHA (shared history)"
+        echo "  4. Reset monorepo branch to the commit whose subtree matches"
+        echo "  5. Verify all three branches are in sync"
+        echo ""
+        echo "Arguments:"
+        echo "  monorepo-branch   Branch in monorepo to reset (default: tracked branch)"
+        exit 0
+    fi
+
+    local mono_branch_override=""
+    local target_sha_override=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --target=*) target_sha_override="${1#--target=}"; shift ;;
+            -*) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
+            *) mono_branch_override="$1"; shift ;;
+        esac
+    done
+
+    # Read config
+    require_bridge_config || exit 1
+    local monorepo_path
+    monorepo_path=$(resolve_monorepo_path) || exit 1
+    local prefix
+    prefix=$(bridge_config_get "prefix")
+    local split_prefix
+    split_prefix=$(bridge_config_get "split-prefix" "bridge-split")
+
+    # Resolve monorepo branch
+    local current_branch
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+    local mono_branch=""
+    if [[ -n "${mono_branch_override}" ]]; then
+        mono_branch="${mono_branch_override}"
+    elif mono_branch=$(git config --local --get "branch.${current_branch}.bridge-tracks" 2>/dev/null) && [[ -n "${mono_branch}" ]]; then
+        : # already set
+    else
+        echo "ERROR: No tracked monorepo branch. Specify it explicitly:" >&2
+        echo "       ${PROG} reset <monorepo-branch>" >&2
+        exit 1
+    fi
+
+    local split_branch="${split_prefix}/${mono_branch}"
+
+    # Get target SHA: from --target flag or interactive prompt
+    local target_sha=""
+    if [[ -n "${target_sha_override}" ]]; then
+        target_sha="${target_sha_override}"
+    else
+        echo "==> Recent commits on '${current_branch}':"
+        git log --oneline -10
+        echo ""
+        target_sha=$(read_input "Enter the commit SHA for new HEAD: ")
+        if [[ -z "${target_sha}" ]]; then
+            echo "ERROR: No commit specified. Use --target=<sha> in non-interactive mode." >&2
+            exit 1
+        fi
+    fi
+
+    # Validate the SHA
+    if ! git rev-parse --verify "${target_sha}" &>/dev/null; then
+        echo "ERROR: '${target_sha}' is not a valid commit." >&2
+        exit 1
+    fi
+    target_sha=$(git rev-parse "${target_sha}")
+
+    echo ""
+    echo "==> Resetting all branches to ${target_sha:0:12}"
+    echo "    Submodule branch: ${current_branch}"
+    echo "    Split branch:     ${split_branch}"
+    echo "    Monorepo branch:  ${mono_branch}"
+
+    if ! confirm_prompt "    Proceed with reset?"; then
+        echo "    Aborted." >&2
+        exit 1
+    fi
+
+    # Step 1: Reset submodule branch
+    echo ""
+    echo "==> Step 1: Resetting submodule branch '${current_branch}'..."
+    git reset --hard "${target_sha}" 2>&1
+
+    # Step 2: Reset split branch (same commit hash — shared history)
+    echo ""
+    echo "==> Step 2: Resetting split branch '${split_branch}'..."
+    local mono_original_branch
+    mono_original_branch=$(git -C "${monorepo_path}" branch --show-current 2>/dev/null || echo "")
+
+    if [[ "${mono_original_branch}" == "${split_branch}" ]]; then
+        git -C "${monorepo_path}" reset --hard "${target_sha}" 2>&1
+    else
+        git -C "${monorepo_path}" branch -f "${split_branch}" "${target_sha}" 2>&1
+    fi
+
+    # Step 3: Reset monorepo branch
+    # Find the monorepo commit whose subtree tree matches the target
+    echo ""
+    echo "==> Step 3: Resetting monorepo branch '${mono_branch}'..."
+    local target_tree
+    target_tree=$(git rev-parse "${target_sha}^{tree}")
+
+    local mono_target=""
+    while IFS= read -r sha; do
+        local subtree
+        subtree=$(git -C "${monorepo_path}" rev-parse "${sha}:${prefix}" 2>/dev/null || true)
+        if [[ "${subtree}" == "${target_tree}" ]]; then
+            mono_target="${sha}"
+            break
+        fi
+    done < <(git -C "${monorepo_path}" log --format="%H" "${mono_branch}")
+
+    if [[ -z "${mono_target}" ]]; then
+        echo "ERROR: Could not find matching monorepo commit for tree ${target_tree:0:12}." >&2
+        echo "       The monorepo branch may not contain a commit with this subtree." >&2
+        exit 1
+    fi
+
+    echo "    Found matching monorepo commit: ${mono_target:0:12}"
+
+    if [[ "${mono_original_branch}" == "${mono_branch}" ]]; then
+        git -C "${monorepo_path}" reset --hard "${mono_target}" 2>&1
+    else
+        git -C "${monorepo_path}" branch -f "${mono_branch}" "${mono_target}" 2>&1
+    fi
+
+    # Restore monorepo original branch if needed
+    local current_mono_branch
+    current_mono_branch=$(git -C "${monorepo_path}" branch --show-current 2>/dev/null || echo "")
+    if [[ -n "${mono_original_branch}" && "${current_mono_branch}" != "${mono_original_branch}" ]]; then
+        git -C "${monorepo_path}" checkout "${mono_original_branch}" 2>/dev/null || true
+    fi
+
+    # Step 4: Verify
+    echo ""
+    echo "==> Verifying sync after reset..."
+    cmd_verify "${mono_branch}"
+}
+
 # --- Main dispatcher ---------------------------------------------------------
 
 main() {
@@ -900,6 +1213,8 @@ main() {
         echo "  split    Split monorepo subdirectory into standalone branch"
         echo "  export   Export submodule commits to monorepo (fetch + subtree merge)"
         echo "  sync     Pull latest monorepo changes into submodule (split + rebase)"
+        echo "  reset    Reset all three branches to undo an export"
+        echo "  verify   Verify all three branches are in sync"
         echo ""
         echo "Run '${PROG} <command> --help' for command-specific usage."
         exit 1
@@ -913,8 +1228,10 @@ main() {
         split)  cmd_split "$@" ;;
         export) cmd_export "$@" ;;
         sync)   cmd_sync "$@" ;;
+        reset)  cmd_reset "$@" ;;
+        verify) cmd_verify "$@" ;;
         -h|--help)
-            main  # re-run with no args to show help
+            main
             ;;
         --version)
             echo "${PROG} ${VERSION}"

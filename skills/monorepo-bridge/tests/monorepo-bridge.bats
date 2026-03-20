@@ -448,7 +448,14 @@ teardown() {
 
 # --- reset tests --------------------------------------------------------------
 
-@test "reset: resets all three branches to target commit" {
+@test "reset: shows help with --help" {
+    run "${MONOREPO_BRIDGE}" reset --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Reset all three branches"* ]]
+    [[ "$output" == *"--target=<sha>"* ]]
+}
+
+@test "reset: resets all three branches via CLI with --target" {
     local prefix="projects/mylib"
     cd "${MONOREPO_DIR}"
     git config --local bridge.prefix "${prefix}"
@@ -461,8 +468,6 @@ teardown() {
     # Record the base state
     local base_sha
     base_sha=$(git rev-parse HEAD)
-    local base_tree
-    base_tree=$(git rev-parse "HEAD^{tree}")
 
     # Add a commit and export
     echo "to be reset" > reset-me.txt
@@ -474,32 +479,17 @@ teardown() {
     # Verify export worked
     [ -f "reset-me.txt" ]
 
-    # Now reset all three branches back to base
-    # Step 1: reset submodule
-    git reset --hard "${base_sha}"
-    [ ! -f "reset-me.txt" ]
-
-    # Step 2: reset split branch (same SHA — shared history)
-    git -C "${MONOREPO_DIR}" checkout "bridge-split/main"
-    git -C "${MONOREPO_DIR}" reset --hard "${base_sha}"
-
-    # Step 3: reset monorepo (find commit by tree match)
-    local mono_target
-    mono_target=$(git -C "${MONOREPO_DIR}" log --format="%H" main | while read sha; do
-        subtree=$(git -C "${MONOREPO_DIR}" rev-parse "${sha}:${prefix}" 2>/dev/null)
-        if [[ "${subtree}" == "${base_tree}" ]]; then
-            echo "${sha}"
-            break
-        fi
-    done)
-    git -C "${MONOREPO_DIR}" checkout main
-    git -C "${MONOREPO_DIR}" reset --hard "${mono_target}"
+    # Reset via CLI using --target flag
+    run "${MONOREPO_BRIDGE}" reset --target="${base_sha}" main
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"All checks passed"* ]]
 
     # Verify all three branches are in sync
     local split_sha sub_sha
     split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
     sub_sha=$(git rev-parse HEAD)
     [ "${split_sha}" = "${sub_sha}" ]
+    [ "${sub_sha}" = "${base_sha}" ]
 
     local mono_subtree split_tree
     mono_subtree=$(git -C "${MONOREPO_DIR}" rev-parse "main:${prefix}")
@@ -512,9 +502,30 @@ teardown() {
     [ "$status" -ne 0 ]
 }
 
+@test "reset: fails without --target in non-interactive mode" {
+    local prefix="projects/mylib"
+    cd "${MONOREPO_DIR}"
+    git config --local bridge.prefix "${prefix}"
+    "${MONOREPO_BRIDGE}" split
+
+    create_submodule_from_split "bridge-split/main"
+    cd "${SUBMODULE_DIR}"
+    "${MONOREPO_BRIDGE}" setup --prefix="${prefix}" "${MONOREPO_DIR}"
+
+    run "${MONOREPO_BRIDGE}" reset main
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"--target=<sha>"* ]]
+}
+
 # --- verify tests -------------------------------------------------------------
 
-@test "verify: all three branches in sync after export" {
+@test "verify: shows help with --help" {
+    run "${MONOREPO_BRIDGE}" verify --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Verify that all three branches"* ]]
+}
+
+@test "verify: passes after export via CLI" {
     local prefix="projects/mylib"
     cd "${MONOREPO_DIR}"
     git config --local bridge.prefix "${prefix}"
@@ -531,17 +542,12 @@ teardown() {
 
     "${MONOREPO_BRIDGE}" export main
 
-    # Check 1: split branch == submodule (same hash)
-    local split_sha sub_sha
-    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
-    sub_sha=$(git rev-parse HEAD)
-    [ "${split_sha}" = "${sub_sha}" ]
-
-    # Check 2: monorepo subtree tree == split branch tree
-    local mono_subtree split_tree
-    mono_subtree=$(git -C "${MONOREPO_DIR}" rev-parse "main:${prefix}")
-    split_tree=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main^{tree}")
-    [ "${mono_subtree}" = "${split_tree}" ]
+    # Verify via CLI
+    run "${MONOREPO_BRIDGE}" verify main
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"CHECK 1 PASS"* ]]
+    [[ "$output" == *"CHECK 2 PASS"* ]]
+    [[ "$output" == *"All checks passed"* ]]
 }
 
 @test "verify: detects mismatch when branches diverge" {
@@ -559,11 +565,11 @@ teardown() {
     git add diverged.txt
     git commit -m "feat: diverged"
 
-    # Check 1 should fail — split branch doesn't have this commit
-    local split_sha sub_sha
-    split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
-    sub_sha=$(git rev-parse HEAD)
-    [ "${split_sha}" != "${sub_sha}" ]
+    # Verify via CLI should fail
+    run "${MONOREPO_BRIDGE}" verify main
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"CHECK 1 FAIL"* ]]
+    [[ "$output" == *"FAILED"* ]]
 }
 
 # --- auto-detect tests --------------------------------------------------------
@@ -676,28 +682,8 @@ teardown() {
     split_tree=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main^{tree}")
     [ "${mono_subtree}" = "${split_tree}" ]
 
-    # 5. Reset back to base
-    local base_tree
-    base_tree=$(git rev-parse "${base_sha}^{tree}")
-
-    # Reset submodule
-    git reset --hard "${base_sha}"
-
-    # Reset split branch
-    git -C "${MONOREPO_DIR}" checkout "bridge-split/main"
-    git -C "${MONOREPO_DIR}" reset --hard "${base_sha}"
-
-    # Reset monorepo (find by tree match)
-    local mono_target
-    mono_target=$(git -C "${MONOREPO_DIR}" log --format="%H" main | while read sha; do
-        subtree=$(git -C "${MONOREPO_DIR}" rev-parse "${sha}:${prefix}" 2>/dev/null)
-        if [[ "${subtree}" == "${base_tree}" ]]; then
-            echo "${sha}"
-            break
-        fi
-    done)
-    git -C "${MONOREPO_DIR}" checkout main
-    git -C "${MONOREPO_DIR}" reset --hard "${mono_target}"
+    # 5. Reset back to base via CLI
+    "${MONOREPO_BRIDGE}" reset --target="${base_sha}" main
 
     # 6. Verify reset — all three in sync, file gone
     split_sha=$(git -C "${MONOREPO_DIR}" rev-parse "bridge-split/main")
