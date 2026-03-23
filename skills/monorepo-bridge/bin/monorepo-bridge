@@ -9,7 +9,7 @@
 # Commands:
 #   setup    Set up the bridge between a submodule and its monorepo
 #   split    Split a monorepo subdirectory into a standalone branch
-#   export   Export submodule commits into the monorepo (fetch + subtree merge)
+#   export   Export submodule commits into the monorepo (fetch + cherry-pick)
 #   sync     Pull latest monorepo changes into the submodule (split + rebase)
 #   reset    Reset all three branches to undo an export
 #   verify   Verify all three branches are in sync
@@ -119,7 +119,7 @@ resolve_monorepo_path() {
 is_dirty_worktree() {
     local repo_path="${1:-.}"
     local status
-    status=$(git -C "${repo_path}" status --porcelain 2>/dev/null)
+    status=$(git -C "${repo_path}" status --porcelain --untracked-files=no 2>/dev/null)
     [[ -n "${status}" ]]
 }
 
@@ -661,11 +661,11 @@ cmd_export() {
         echo ""
         echo "Steps performed:"
         echo "  1. Fetch submodule commits into monorepo (no remote added)"
-        echo "  2. Update split branch to fetched commits (identical hashes)"
-        echo "  3. Subtree-merge split branch into monorepo tracking branch"
+        echo "  2. Cherry-pick each new commit with subtree strategy"
+        echo "  3. Update split branch to match submodule HEAD"
         echo ""
         echo "Preserves identical commit hashes between split and submodule."
-        echo "Creates a merge commit on the monorepo branch."
+        echo "Creates regular (non-merge) commits on the monorepo branch."
         echo ""
         echo "Arguments:"
         echo "  target-branch   Branch in monorepo to apply to (default: tracked branch)"
@@ -741,12 +741,7 @@ cmd_export() {
     echo "==> Fetching submodule commits into monorepo..."
     git -C "${monorepo_path}" fetch "${sub_toplevel}" "${current_branch}" 2>&1
 
-    # Step 2: Update split branch to point at fetched commits (identical hashes)
-    echo ""
-    echo "==> Updating split branch '${split_branch}'..."
-    git -C "${monorepo_path}" branch -f "${split_branch}" FETCH_HEAD 2>&1
-
-    # Step 3: Subtree-merge split branch into monorepo tracking branch
+    # Step 2: Cherry-pick each new commit with subtree strategy
     local mono_current_branch
     mono_current_branch=$(git -C "${monorepo_path}" rev-parse --abbrev-ref HEAD)
     local need_restore=false
@@ -756,24 +751,45 @@ cmd_export() {
         need_restore=true
     fi
 
-    echo "==> Merging into monorepo branch '${target_branch}'..."
-    local merge_msg="Merge ${current_branch} (${new_count} commit(s)) into ${target_branch}"
-    if ! git -C "${monorepo_path}" merge -s subtree -Xsubtree="${prefix}" \
-        --allow-unrelated-histories \
-        "${split_branch}" -m "${merge_msg}" 2>&1; then
-        echo "" >&2
-        echo "==> MERGE CONFLICT — export paused." >&2
-        echo "" >&2
-        echo "    Resolve conflicts in the monorepo working tree:" >&2
-        echo "      cd ${monorepo_path}" >&2
-        echo "" >&2
-        echo "    Then complete the merge:" >&2
-        echo "      git merge --continue" >&2
-        echo "" >&2
-        echo "    Or abort to return to the pre-export state:" >&2
-        echo "      git merge --abort" >&2
-        exit 1
-    fi
+    echo ""
+    echo "==> Cherry-picking ${new_count} commit(s) into '${target_branch}'..."
+
+    # Enumerate commits in chronological order (oldest first)
+    local commits
+    mapfile -t commits < <(git rev-list --reverse "${split_sha}..${sub_sha}")
+
+    local applied=0
+    for commit_sha in "${commits[@]}"; do
+        local short_sha="${commit_sha:0:12}"
+        local subject
+        subject=$(git log -1 --format='%s' "${commit_sha}")
+        echo "    [$(( applied + 1 ))/${new_count}] ${short_sha} ${subject}"
+
+        if ! git -C "${monorepo_path}" cherry-pick \
+            --strategy=subtree -Xsubtree="${prefix}" \
+            "${commit_sha}" 2>&1; then
+            echo "" >&2
+            echo "==> CONFLICT on commit ${short_sha} — cherry-pick paused." >&2
+            echo "" >&2
+            echo "    Resolve conflicts in the monorepo working tree:" >&2
+            echo "      cd ${monorepo_path}" >&2
+            echo "" >&2
+            echo "    Then continue the cherry-pick:" >&2
+            echo "      git cherry-pick --continue" >&2
+            echo "" >&2
+            echo "    Or abort to return to the pre-export state:" >&2
+            echo "      git cherry-pick --abort" >&2
+            echo "" >&2
+            echo "    After resolving, re-run export to apply remaining commits." >&2
+            exit 1
+        fi
+        (( ++applied ))
+    done
+
+    # Step 3: Update split branch to match submodule HEAD (after successful cherry-pick)
+    echo ""
+    echo "==> Updating split branch '${split_branch}'..."
+    git -C "${monorepo_path}" branch -f "${split_branch}" "${sub_sha}" 2>&1
 
     # Restore monorepo to its original branch
     if [[ "${need_restore}" == true ]]; then
@@ -1344,7 +1360,7 @@ show_usage() {
     echo "Commands:"
     echo "  setup    Set up the bridge (run from submodule)"
     echo "  split    Split monorepo subdirectory into standalone branch"
-    echo "  export   Export submodule commits to monorepo (fetch + subtree merge)"
+    echo "  export   Export submodule commits to monorepo (fetch + cherry-pick)"
     echo "  sync     Pull latest monorepo changes into submodule (split + rebase)"
     echo "  reset    Reset all three branches to undo an export"
     echo "  verify   Verify all three branches are in sync"
