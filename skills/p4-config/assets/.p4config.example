@@ -1,6 +1,6 @@
 # Perforce server config template
 # Copy this file to your home directory or working directory as:
-#   .p4config.<SERVER_NAME>
+#   .p4config.<CONFIG_NAME>
 # For example: .p4config.austin, .p4config.atlanta
 #
 # Then use the p4-config skill to switch between servers.

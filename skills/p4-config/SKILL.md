@@ -11,7 +11,7 @@ Manages Perforce server configurations and depot operations — switch servers, 
 
 ## Config file convention
 
-Config files use the naming pattern `.p4config.<SERVER_NAME>`, where the extension after `.p4config.` is a human-friendly server name chosen by the user (e.g., `.p4config.austin`, `.p4config.atlanta`).
+Config files use the naming pattern `.p4config.<CONFIG_NAME>`, where the extension after `.p4config.` is a human-friendly config name chosen by the user (e.g., `.p4config.austin`, `.p4config.atlanta`).
 
 Each config file contains one `KEY=VALUE` per line. Supported keys: `P4PORT`, `P4USER`, `P4CLIENT`, and any other `P4*` environment variable. Blank lines and lines starting with `#` are ignored.
 
@@ -32,7 +32,7 @@ Search for `.p4config.*` files. Check these locations in order, using the first 
 
 Use Glob with pattern `.p4config.*` in each location.
 
-Extract the server name from each filename — the part after `.p4config.` is the server name.
+Extract the config name from each filename — the part after `.p4config.` is the config name.
 
 Parse each file to extract all `KEY=VALUE` pairs (skip blank lines and lines starting with `#`).
 
@@ -44,9 +44,9 @@ Run `p4 set` to display what the user currently has active, so they can see what
 
 ### 3. Prompt the user
 
-Use AskUserQuestion to present the available servers:
+Use AskUserQuestion to present the available configs:
 
-- **Label**: the server name from the filename (e.g., `austin`)
+- **Label**: the config name from the filename (e.g., `austin`)
 - **Description**: the `P4PORT` and `P4USER` from that config file
 
 ### 4. Apply the selected config
@@ -69,7 +69,7 @@ Run `p4 set` and look for `P4PORT`. If `P4PORT` is set, skip to step 3.
 
 Search for `.p4config.*` files (same discovery logic as the switch workflow above).
 
-- **Configs found**: Use AskUserQuestion to prompt the user to choose a server, then apply it with `p4 set`.
+- **Configs found**: Use AskUserQuestion to prompt the user to choose a config, then apply it with `p4 set`.
 - **No configs found**: Ask the user if they want to create a config file. Point them to `assets/.p4config.example` in this skill's directory as a template. Do not proceed until a server is configured.
 
 ### 3. Download the file
@@ -84,9 +84,9 @@ Use `p4 print -o <output_path> <depot_path>` to download.
 
 Tell the user the local path where the file was saved.
 
-## Adding new servers
+## Adding new configs
 
-If the user wants to add a new server config:
+If the user wants to add a new config:
 
 1. Ask for the server connection details in a **single prompt** using AskUserQuestion with three questions at once:
    - **Protocol**: `tcp` (Recommended) or `ssl`
@@ -94,8 +94,8 @@ If the user wants to add a new server config:
    - **Port**: the port number (e.g., `1666`)
    Then combine them into `P4PORT=<protocol>:<hostname>:<port>`.
    Also ask for `P4USER` in the same prompt. Optionally ask for `P4CLIENT` (not required — many operations like `p4 print` work without it).
-2. Ask for a short server name to use in the filename (e.g., `austin`).
+2. Ask for a short config name to use in the filename (e.g., `austin`).
 3. Ask where to store the config file using AskUserQuestion:
    - **Current working directory (Recommended)** — the default, keeps configs alongside the project
    - **Home directory** — `$HOME` or `$USERPROFILE`, useful if the config should be available from anywhere
-4. Read `assets/.p4config.example` from this skill's directory. Use it as the base template — keep the comment block structure, replace the placeholder values (`your-server-host`, `your-username`, `your-client-name`) with the user's actual values, and update the `SERVER_NAME` in the comments. If the user chose to skip `P4CLIENT`, omit that line entirely. Write the result as `.p4config.<SERVER_NAME>` in the chosen location.
+4. Read `assets/.p4config.example` from this skill's directory. Use it as the base template — keep the comment block structure, replace the placeholder values (`your-server-host`, `your-username`, `your-client-name`) with the user's actual values, and update the `CONFIG_NAME` in the comments. If the user chose to skip `P4CLIENT`, omit that line entirely. Write the result as `.p4config.<CONFIG_NAME>` in the chosen location.
