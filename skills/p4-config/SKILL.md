@@ -70,7 +70,7 @@ Run `p4 set` and look for `P4PORT`. If `P4PORT` is set, skip to step 3.
 Search for `.p4config.*` files (same discovery logic as the switch workflow above).
 
 - **Configs found**: Use AskUserQuestion to prompt the user to choose a config, then apply it with `p4 set`.
-- **No configs found**: Ask the user if they want to create a config file. Point them to `assets/.p4config.example` in this skill's directory as a template. Do not proceed until a server is configured.
+- **No configs found**: Ask the user if they want to create a config file. Point them to `assets/.p4config.example` in this skill's directory as a template. Do not proceed until a config is set up.
 
 ### 3. Download the file
 
@@ -88,14 +88,13 @@ Tell the user the local path where the file was saved.
 
 If the user wants to add a new config:
 
-1. Ask for the server connection details in a **single prompt** using AskUserQuestion with three questions at once:
+1. Ask for all details in a **single prompt** using AskUserQuestion with four questions:
+   - **Config name**: a short name for the filename (e.g., `austin`)
    - **Protocol**: `tcp` (Recommended) or `ssl`
    - **Server hostname**: the server address (e.g., `myserver.example.com`)
-   - **Port**: the port number (e.g., `1666`)
-   Then combine them into `P4PORT=<protocol>:<hostname>:<port>`.
-   Also ask for `P4USER` in the same prompt. Optionally ask for `P4CLIENT` (not required — many operations like `p4 print` work without it).
-2. Ask for a short config name to use in the filename (e.g., `austin`).
-3. Ask where to store the config file using AskUserQuestion:
+   - **P4USER**: the Perforce username
+   Use the default port `1666`. Combine protocol and hostname into `P4PORT=<protocol>:<hostname>:1666`. Do not ask for `P4CLIENT` — it's optional and many operations like `p4 print` work without it. The user can add it to the config file later if needed.
+2. Ask where to store the config file using AskUserQuestion:
    - **Current working directory (Recommended)** — the default, keeps configs alongside the project
    - **Home directory** — `$HOME` or `$USERPROFILE`, useful if the config should be available from anywhere
-4. Read `assets/.p4config.example` from this skill's directory. Use it as the base template — keep the comment block structure, replace the placeholder values (`your-server-host`, `your-username`, `your-client-name`) with the user's actual values, and update the `CONFIG_NAME` in the comments. If the user chose to skip `P4CLIENT`, omit that line entirely. Write the result as `.p4config.<CONFIG_NAME>` in the chosen location.
+3. Read `assets/.p4config.example` from this skill's directory. Use it as the base template — keep the comment block structure, replace the placeholder values (`your-server-host`, `your-username`, `your-client-name`) with the user's actual values, and update the `CONFIG_NAME` in the comments. If the user chose to skip `P4CLIENT`, omit that line entirely. Write the result as `.p4config.<CONFIG_NAME>` in the chosen location.
