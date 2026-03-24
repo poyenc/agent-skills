@@ -5,9 +5,9 @@ compatibility:
   tools: [Bash, Glob, Read, AskUserQuestion]
 ---
 
-# P4
+# p4-config
 
-Manages Perforce server configurations and depot operations — switch servers, download files, and more.
+Manages Perforce configs and depot operations — switch configs, download files, and more.
 
 ## Config file convention
 
@@ -59,7 +59,7 @@ Run `p4 set` to confirm the new settings, and show the result to the user.
 
 ## Downloading files from a depot path
 
-When the user provides a Perforce depot path (anything starting with `//`), download the file using the currently active P4 server. Follow this logic:
+When the user provides a Perforce depot path (anything starting with `//`), download the file using the currently active P4 config. Follow this logic:
 
 ### 1. Check if a P4 server is already configured
 
@@ -67,7 +67,7 @@ Run `p4 set` and look for `P4PORT`. If `P4PORT` is set, skip to step 3.
 
 ### 2. No server configured — help the user pick one
 
-Search for `.p4config.*` files (same discovery logic as the switch workflow above).
+Search for `.p4config.*` files (same discovery logic as the Workflow section above).
 
 - **Configs found**: Use AskUserQuestion to prompt the user to choose a config, then apply it with `p4 set`.
 - **No configs found**: Ask the user if they want to create a config file. Point them to `assets/.p4config.example` in this skill's directory as a template. Do not proceed until a config is set up.
