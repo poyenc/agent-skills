@@ -97,4 +97,4 @@ If the user wants to add a new config:
 2. Ask where to store the config file using AskUserQuestion:
    - **Current working directory (Recommended)** — the default, keeps configs alongside the project
    - **Home directory** — `$HOME` or `$USERPROFILE`, useful if the config should be available from anywhere
-3. Read `assets/.p4config.example` from this skill's directory. Use it as the base template — keep the comment block structure, replace the placeholder values (`your-server-host`, `your-username`, `your-client-name`) with the user's actual values, and update the `CONFIG_NAME` in the comments. If the user chose to skip `P4CLIENT`, omit that line entirely. Write the result as `.p4config.<CONFIG_NAME>` in the chosen location.
+3. Read `assets/.p4config.example` from this skill's directory. Use it as the base template — keep the comment block structure, replace the placeholder values (`your-server-host`, `your-username`) with the user's actual values, remove the `P4CLIENT` line, and update the `CONFIG_NAME` in the comments. Write the result as `.p4config.<CONFIG_NAME>` in the chosen location.

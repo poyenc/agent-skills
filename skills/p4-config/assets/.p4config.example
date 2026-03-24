@@ -3,8 +3,8 @@
 #   .p4config.<CONFIG_NAME>
 # For example: .p4config.austin, .p4config.atlanta
 #
-# Then use the p4-config skill to switch between servers.
+# Then use the p4-config skill to switch between configs.
 
 P4PORT=tcp:your-server-host:1666
 P4USER=your-username
-P4CLIENT=your-client-name
+P4CLIENT=your-client-name  # optional
