@@ -12,6 +12,7 @@ A collection of Claude Code agent skills for specialized tasks.
 | **[ck-list-fmha-prs](skills/ck-list-fmha-prs/)** | List open pull requests from ROCm/rocm-libraries focused on fused multi-head attention (FMHA) kernels. |
 | **[gpu-usage](skills/gpu-usage/)** | Report GPU usage on shared servers — shows which processes occupy each GPU, VRAM percentage, GPU utilization, process owner, elapsed time, and Docker container name. |
 | **[monorepo-bridge](skills/monorepo-bridge/)** | Bidirectional commit transfer between monorepos and standalone submodule repos. CLI tool with setup, split, export, sync, reset, and verify subcommands. Uses fetch + subtree merge for export, rebase for sync. Auto-detects config from existing remotes. |
+| **[p4-config](skills/p4-config/)** | Manage Perforce server configurations — switch between P4 servers, download files from depot paths, and create new server configs. Stores settings in `.p4config.<name>` files. |
 
 ## Usage
 
