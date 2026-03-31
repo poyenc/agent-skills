@@ -222,11 +222,11 @@ def _detect_containers(
             result[pid] = ("(container)", container_id[:12])
             continue
 
-        # Resolve host user who ran docker exec/run into this container
+        # Resolve host user who started this container
         if container_name in user_cache:
             host_user = user_cache[container_name]
         else:
-            host_user = _resolve_container_user(container_name)
+            host_user = _resolve_container_user(container_name, sample_pid=pid)
             user_cache[container_name] = host_user
 
         result[pid] = (host_user, container_name)
@@ -277,35 +277,75 @@ def _match_container_id(cgroup_id: str, cid_to_name: Dict[str, str]) -> str:
     return ""
 
 
-def _resolve_container_user(container_name: str) -> str:
-    """Find the host user who ran docker exec/run for a given container."""
+def _resolve_container_user_via_loginuid(pid: int) -> str:
+    """Resolve the host user via /proc/<pid>/loginuid.
+
+    The kernel audit loginuid is set at login and inherited by all child
+    processes, including those inside containers.  This is the most reliable
+    way to trace a containerised process back to the host user who started it.
+    Returns empty string on failure (loginuid unset or unreadable).
+    """
+    try:
+        with open(f"/proc/{pid}/loginuid", "r") as f:
+            uid_str = f.read().strip()
+        uid = int(uid_str)
+        # 4294967295 (2^32-1) means unset
+        if uid == 4294967295 or uid < 0:
+            return ""
+        import pwd
+        return pwd.getpwuid(uid).pw_name
+    except (OSError, PermissionError, ValueError, KeyError):
+        return ""
+
+
+def _resolve_container_user(container_name: str, sample_pid: int = 0) -> str:
+    """Find the host user who started a container.
+
+    Strategy (in order):
+    1. Read /proc/<pid>/loginuid — inherited from the host login session.
+    2. Read loginuid of the container's init process via ``docker inspect``.
+    3. Fallback: search for a live ``docker exec/run`` host process (pgrep).
+    """
+    # --- Strategy 1: loginuid of the GPU process itself ---
+    if sample_pid:
+        user = _resolve_container_user_via_loginuid(sample_pid)
+        if user:
+            return user
+
+    # --- Strategy 2: loginuid of container init process ---
+    init_out, rc = _run(
+        ["docker", "inspect", "--format", "{{.State.Pid}}", container_name]
+    )
+    if rc == 0 and init_out.strip().isdigit():
+        init_pid = int(init_out.strip())
+        if init_pid > 0:
+            user = _resolve_container_user_via_loginuid(init_pid)
+            if user:
+                return user
+
+    # --- Strategy 3: pgrep for docker exec/run process ---
     pgrep_out, rc = _run(
         ["pgrep", "-a", "-f", f"docker.*(exec|run).*{re.escape(container_name)}"]
     )
-    if rc != 0 or not pgrep_out.strip():
-        return "(container)"
+    if rc == 0 and pgrep_out.strip():
+        pids: List[int] = []
+        for line in pgrep_out.strip().splitlines():
+            parts = line.split(None, 1)
+            if len(parts) >= 2:
+                try:
+                    pids.append(int(parts[0]))
+                except ValueError:
+                    pass
 
-    pids: List[int] = []
-    for line in pgrep_out.strip().splitlines():
-        parts = line.split(None, 1)
-        if len(parts) >= 2:
-            try:
-                pids.append(int(parts[0]))
-            except ValueError:
-                pass
+        if pids:
+            pid_str = ",".join(str(p) for p in pids)
+            user_out, _ = _run(["ps", "-o", "user", "--no-headers", "-p", pid_str])
+            users = list(dict.fromkeys(u.strip() for u in user_out.splitlines() if u.strip()))
+            if users:
+                non_root = [u for u in users if u != "root"]
+                return non_root[0] if non_root else users[0]
 
-    if not pids:
-        return "(container)"
-
-    pid_str = ",".join(str(p) for p in pids)
-    user_out, _ = _run(["ps", "-o", "user", "--no-headers", "-p", pid_str])
-    users = list(dict.fromkeys(u.strip() for u in user_out.splitlines() if u.strip()))
-
-    if not users:
-        return "(container)"
-    # Prefer non-root user (the actual host user)
-    non_root = [u for u in users if u != "root"]
-    return non_root[0] if non_root else users[0]
+    return "(container)"
 
 
 # ---------------------------------------------------------------------------
