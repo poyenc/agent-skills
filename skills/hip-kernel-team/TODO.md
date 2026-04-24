@@ -2,23 +2,23 @@
 
 ## High Impact
 
-### 3. Add task dependency support
-The skill has no concept of blocked-by relationships between tasks. The lead manages this naturally, but a less experienced lead might assign tasks prematurely. Add guidance for using `addBlockedBy` in TaskCreate/TaskUpdate.
-
 ## Medium Impact
-
-### 4. Unresponsive member protocol
-No guidance on what to do when a member goes idle repeatedly without reporting. Suggested rule: "If a member goes idle 3x without progress, read their output files directly and reassign if stuck."
 
 ### 5. Flexible team size
 The skill always assumes a full roster (lead + implementer + profiler + researcher). Sometimes only 1-2 members are needed. Add support for "solo mode" (1 member) or "pair mode" (2 members) to save resources.
 
-### 6. Rotation point tracking is implicit
-The skill says "track points" but provides no persistence mechanism. Points reset every session. Add a `rotation_points` field to each member's status file so it persists across rotations and sessions.
-
 ## Low Impact
 
 ## Completed
+
+### 3. Add task dependency support
+The skill has no concept of blocked-by relationships between tasks. The lead manages this naturally, but a less experienced lead might assign tasks prematurely. Add guidance for using `addBlockedBy` in TaskCreate/TaskUpdate. **Status: done — added dependency bullet to lead.md.**
+
+### 4. Unresponsive member protocol
+No guidance on what to do when a member goes idle repeatedly without reporting. Suggested rule: "If a member goes idle 3x without progress, read their output files directly and reassign if stuck." **Status: done — added three-step idle protocol to lead.md.**
+
+### 6. Rotation point tracking is implicit
+The skill says "track points" but provides no persistence mechanism. Points reset every session. Add a `rotation_points` field to each member's status file so it persists across rotations and sessions. **Status: done — clarified as in-memory tally, reset on rotation. No persistence needed.**
 
 ### 1. Kill the bootstrap subagent
 Each member spawns an Explore subagent to read status files on boot (+10% context for zero unique value). The lead already has this context — should inline a 5-line state summary directly in the spawn prompt instead. **Status: done — context-bloat reduction.**
