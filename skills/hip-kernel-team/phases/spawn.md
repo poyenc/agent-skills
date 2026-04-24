@@ -90,5 +90,5 @@ Assign tasks via TaskUpdate.
 
 ## 10. Begin operating as Lead
 
-Read `${CLAUDE_SKILL_DIR}/phases/operate.md` and follow the Lead
-operating instructions for the rest of the session.
+Follow the Lead instructions in `${CLAUDE_SKILL_DIR}/roles/lead.md`
+for the rest of the session.

@@ -66,6 +66,15 @@ Member reports results →
   Revert → backup first, revert, document findings, next task
 ```
 
+## Status Updates
+
+After each experiment/decision, update the status file:
+- If recall enabled: the recall status.md
+- If no recall: `.claude/teams/{{TEAM_NAME}}/status.md`
+
+Include: what was tried, results (measurements), keep/revert decision,
+and why.
+
 ## When All Tasks Are Done
 
 Do NOT shut down. Ask the user:
@@ -99,6 +108,85 @@ When your context is getting high:
 2. Shut down all members (they save status first)
 3. Tell user: "Team paused. Run `/hip-kernel-team load {{TEAM_NAME}}`
    to resume."
+
+---
+
+## Rules You Enforce on Members
+
+These rules apply to ALL team members. Enforce them.
+
+### Output Handling
+
+1. **All command stdout+stderr** → `/tmp/<team-name>/<role>/<desc>_NNN.txt`
+   (using `2>&1`)
+2. **Never pipe through tee, head, tail, grep, awk, sed, or any filter**
+   when capturing — always save complete, unmodified output first
+3. **Print the file path** for user visibility:
+   `"Output saved to: /tmp/<team>/<role>/build_001.txt"`
+4. **Read/analyze the saved file separately**: use Read tool with
+   offset/limit, or spawn Explore subagent for large files
+5. **Never print long output inline** in messages
+
+### Context Efficiency
+
+Three-tier hierarchy:
+- **Lead** (main conversation): lightweight, long-lived, sees summaries
+- **Members** (spawned agents): medium context, focused work, delegate
+  heavy reads
+- **Subagents** (spawned by members): short-lived, read large files,
+  return compact summaries
+
+File reading rules:
+- < 100 lines: Read tool directly
+- 100-500 lines: Read with offset/limit
+- > 500 lines: spawn Explore subagent
+- Assembly files (.s): ALWAYS via subagent
+
+### Git & File Safety
+
+- **Never `git stash pop` or `git stash drop`** — always `git stash apply`
+- **Backup before reverting**: `cp file file.bak` before `git checkout`
+- **One task at a time** per member — no parallel experiments on same files
+- **Clean build artifacts** before rebuilding (JIT cache, .so, build/)
+
+### Message Efficiency
+
+- Each message should advance work, not just acknowledge
+- Implementer: review + implement + report in ONE message
+- Report format: (1) what was done, (2) files changed, (3) results
+- Don't send separate "I agree" then "I'm done" messages
+
+## Recall Integration
+
+### With Recall (preferred)
+
+Paths resolved from config:
+```
+~/.local/share/claude/recall/<project>/branches/<branch>/tasks/<task>/
+  status.md      — task progress, experiment log
+  knowledge.md   — verified facts, measurements
+  workflows.md   — build/test/bench commands
+```
+
+Responsibilities:
+- **Lead**: updates status.md after each experiment/decision
+- **Implementer**: reads workflows.md for commands, knowledge.md for
+  constraints
+- **Profiler**: writes measurements to knowledge.md
+- **Researcher**: writes external findings to knowledge.md
+
+### Without Recall (fallback)
+
+```
+.claude/teams/<team-name>/
+  config.md        — team config
+  status.md        — task progress, findings
+  knowledge.md     — verified facts, measurements
+  status/
+    <role>.md      — per-member rotation status
+```
+
+Lead maintains status.md and knowledge.md directly.
 
 ## Evaluation Criteria
 
