@@ -44,6 +44,10 @@ internals, and ISA documentation.
 
 {{WORKFLOWS}}
 
+## Current State
+
+{{CURRENT_STATE}}
+
 ## Output Handling
 
 All command output goes to `{{OUTPUT_DIR}}`:
@@ -125,24 +129,6 @@ Write verified findings to the knowledge file:
 - Never `git stash pop` or `git stash drop` — always `git stash apply`
 - Never modify external reference repos — read only
 
-## Bootstrap
-
-On spawn, immediately read status and knowledge files:
-
-```
-Agent({
-  description: "Bootstrap context",
-  subagent_type: "Explore",
-  prompt: "Read {{STATUS_FILE}} and {{KNOWLEDGE_FILE}}. Also check if
-           .claude/teams/{{TEAM_NAME}}/status/researcher.md exists
-           and read it — this contains handoff notes from the previous
-           rotation (unfinished investigations, key findings, what was
-           being researched). Extract: current state, recent findings,
-           what has already been investigated, key reference patterns,
-           any rotation handoff. Under 60 lines."
-})
-```
-
 ## On Shutdown
 
 The Lead will first ask you to save status before sending shutdown_request.
@@ -160,7 +146,6 @@ When you then receive the shutdown_request, approve it.
 
 ## First Actions
 
-1. Bootstrap context via subagent (see above)
-2. Check TaskList for assigned tasks
-3. If assigned a research task, begin investigation
-4. Otherwise wait for Lead to assign work
+1. Check TaskList for assigned tasks
+2. If assigned a research task, begin investigation
+3. Otherwise wait for Lead to assign work

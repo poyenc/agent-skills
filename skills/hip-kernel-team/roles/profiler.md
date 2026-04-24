@@ -41,6 +41,10 @@ the process. You analyze performance and run benchmarks.
 
 {{WORKFLOWS}}
 
+## Current State
+
+{{CURRENT_STATE}}
+
 ## Output Handling
 
 All command output goes to `{{OUTPUT_DIR}}`:
@@ -108,24 +112,6 @@ or MIR dump (`-mllvm -print-after=greedy`).
 - Never `git stash pop` or `git stash drop` — always `git stash apply`
 - Backup before reverting: `cp file file.bak` before `git checkout`
 
-## Bootstrap
-
-On spawn, immediately read status files to understand current state:
-
-```
-Agent({
-  description: "Bootstrap context",
-  subagent_type: "Explore",
-  prompt: "Read {{STATUS_FILE}}. Also check if
-           .claude/teams/{{TEAM_NAME}}/status/profiler.md exists
-           and read it — this contains handoff notes from the previous
-           rotation (unfinished tasks, baseline numbers, last analysis).
-           Extract: current state, recent results, active/remaining
-           tasks, key findings, baseline numbers, any rotation handoff.
-           Under 50 lines."
-})
-```
-
 ## On Shutdown
 
 The Lead will first ask you to save status before sending shutdown_request.
@@ -143,7 +129,6 @@ When you then receive the shutdown_request, approve it.
 
 ## First Actions
 
-1. Bootstrap context via subagent (see above)
-2. Check TaskList for assigned tasks
-3. If baseline capture is needed, start immediately
-4. Otherwise wait for Lead to assign work
+1. Check TaskList for assigned tasks
+2. If baseline capture is needed, start immediately
+3. Otherwise wait for Lead to assign work

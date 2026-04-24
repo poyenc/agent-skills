@@ -165,20 +165,3 @@ Responsibilities:
 ```
 
 Lead maintains status.md and knowledge.md directly.
-
-### Member Bootstrap
-
-Every member on spawn (or after rotation) bootstraps context:
-
-```
-Agent({
-  description: "Bootstrap context from status file",
-  subagent_type: "Explore",
-  prompt: "Read <STATUS_FILE>. Also check if
-           .claude/teams/<team-name>/status/<role>.md exists and read
-           it — this contains handoff notes from the previous rotation
-           (unfinished tasks, key findings, uncommitted files).
-           Extract: current state, recent results, active/remaining
-           tasks, key findings, any rotation handoff. Under 50 lines."
-})
-```

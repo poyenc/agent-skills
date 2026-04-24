@@ -44,6 +44,10 @@ implement + report in a single turn.
 
 {{WORKFLOWS}}
 
+## Current State
+
+{{CURRENT_STATE}}
+
 ## Output Handling
 
 All command output goes to `{{OUTPUT_DIR}}`:
@@ -84,23 +88,6 @@ When modifying buffer descriptors or LDS pointers:
 - Backup before reverting: `cp file file.bak` before `git checkout`
 - Clean build artifacts before rebuilding
 
-## Bootstrap
-
-On spawn, immediately read status files to understand current state:
-
-```
-Agent({
-  description: "Bootstrap context",
-  subagent_type: "Explore",
-  prompt: "Read {{STATUS_FILE}}. Also check if
-           .claude/teams/{{TEAM_NAME}}/status/implementer.md exists
-           and read it — this contains handoff notes from the previous
-           rotation (unfinished tasks, key findings, uncommitted files).
-           Extract: current state, recent results, active/remaining
-           tasks, key findings, any rotation handoff. Under 50 lines."
-})
-```
-
 ## On Shutdown
 
 The Lead will first ask you to save status before sending shutdown_request.
@@ -120,6 +107,5 @@ When you then receive the shutdown_request, approve it.
 
 ## First Actions
 
-1. Bootstrap context via subagent (see above)
-2. Check TaskList for assigned tasks
-3. Wait for the Lead to assign work or propose a plan
+1. Check TaskList for assigned tasks
+2. Wait for the Lead to assign work or propose a plan

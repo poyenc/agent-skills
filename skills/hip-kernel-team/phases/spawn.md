@@ -23,7 +23,15 @@ If no specific tasks exist yet, create an investigation task:
 
 Read each needed role file from `${CLAUDE_SKILL_DIR}/roles/<role>.md`
 
-## 5. Fill placeholders
+## 5. Prepare inline state summary
+
+For each member being spawned, read `{{STATUS_FILE}}` and check if
+`.claude/teams/<team-name>/status/<role>.md` exists. Compose a compact
+summary (under 10 lines) of: current state, recent results, active
+tasks, key findings, and any rotation handoff notes. If no status files
+exist, use: `"Fresh team -- no prior state. Wait for task assignment."`
+
+## 6. Fill placeholders
 
 Fill placeholders in each template with values from config:
 
@@ -34,6 +42,7 @@ Fill placeholders in each template with values from config:
 | `{{STATUS_FILE}}` | Recall path or `.claude/teams/<name>/status.md` |
 | `{{KNOWLEDGE_FILE}}` | Recall path or `.claude/teams/<name>/knowledge.md` |
 | `{{WORKFLOWS}}` | Config Workflows section |
+| `{{CURRENT_STATE}}` | Inline state summary prepared in step 5 |
 | `{{KEY_FILES}}` | Config Key Files section |
 | `{{TEAM_MEMBERS}}` | Roster of teammate names and roles |
 | `{{TEAM_MEMBERS_COUNT}}` | Number of team members (e.g., "4") |
@@ -43,7 +52,7 @@ Fill placeholders in each template with values from config:
 | `{{EVALUATION_CRITERIA}}` | Config Evaluation Criteria section |
 | `{{TEAM_NAME}}` | Team name |
 
-## 6. Generate communication rules
+## 7. Generate communication rules
 
 Generate from the roles present. Only include pairs where both roles
 exist on the team:
@@ -62,7 +71,7 @@ exist on the team:
 **Escalation**: If members disagree, either escalates to Lead. Lead
 decides. If Lead can't decide, Lead asks user.
 
-## 7. Spawn member agents
+## 8. Spawn member agents
 
 Spawn each member (not Lead — Lead is you, the main conversation):
 
@@ -75,11 +84,11 @@ Agent({
 })
 ```
 
-## 8. Assign initial tasks
+## 9. Assign initial tasks
 
 Assign tasks via TaskUpdate.
 
-## 9. Begin operating as Lead
+## 10. Begin operating as Lead
 
 Read `${CLAUDE_SKILL_DIR}/phases/operate.md` and follow the Lead
 operating instructions for the rest of the session.
