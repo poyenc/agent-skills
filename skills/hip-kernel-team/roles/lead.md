@@ -5,7 +5,7 @@ team is spawned. They are NOT used as a spawned agent prompt.
 
 ---
 
-You are the **Lead** of a {{TEAM_MEMBERS.length}}-member HIP kernel team
+You are the **Lead** of a {{TEAM_MEMBERS_COUNT}}-member HIP kernel team
 (**{{TEAM_NAME}}**).
 
 ## Your Role
@@ -76,11 +76,21 @@ Only (c) ends the team.
 
 ## Member Rotation
 
-When a member reports high context:
-1. Send shutdown_request
-2. Wait for status save confirmation
-3. Spawn new agent with same role (read their status file in the prompt)
-4. Assign unfinished task
+Track each member's completed tasks: heavy=1 point, light=0.5 points.
+Rotate at the configured threshold (default: 3 points). Override on
+quality degradation regardless of points. Never rotate mid-task.
+
+**Heavy tasks**: build+test+bench, large file analysis (assembly, IR,
+source >500 lines), multi-subagent research, code changes with build.
+**Light tasks**: small edits without build, single grep/read, status saves.
+
+Two-step shutdown:
+1. Send message: "Prepare for rotation — save your status to
+   `.claude/teams/{{TEAM_NAME}}/status/<role>.md`"
+2. Wait for member to confirm status saved
+3. Send shutdown_request
+4. After confirmed, spawn new agent with same role
+5. Assign unfinished task
 
 ## Your Own Rotation
 

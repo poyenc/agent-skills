@@ -223,7 +223,7 @@ created: <YYYY-MM-DD>
 
 ## Context Management
 
-- Member rotation threshold: 60%
+- Member rotation: 3 points (heavy=1, light=0.5), override on quality degradation
 - Output directory: /tmp/<team-name>/
 - Delegate reads above: 500 lines
 
@@ -266,6 +266,7 @@ After config is saved (new or resumed):
    | `{{WORKFLOWS}}` | Config Workflows section |
    | `{{KEY_FILES}}` | Config Key Files section |
    | `{{TEAM_MEMBERS}}` | Roster of teammate names and roles |
+   | `{{TEAM_MEMBERS_COUNT}}` | Number of team members (e.g., "4") |
    | `{{COMMUNICATION_RULES}}` | Generated from role pairs present |
    | `{{ENVIRONMENT}}` | Config Environment section |
    | `{{OUTPUT_DIR}}` | `/tmp/<team-name>/<role>/` |
@@ -357,22 +358,31 @@ After each experiment/decision, update the status file:
 Include: what was tried, results (measurements), keep/revert decision,
 and why.
 
-### Member Rotation (context > threshold)
+### Member Rotation (weighted task counter)
 
-When a member reports high context or you notice an idle notification
-mentioning it:
+Track each member's completed tasks with a point system:
+- **Heavy task (1 point)**: build+test+bench cycle, large file analysis
+  (assembly, IR, source files >500 lines), multi-subagent research,
+  code changes with build verification
+- **Light task (0.5 points)**: small code edits without build, single
+  grep/read, status reporting, file saves
 
-1. Send `shutdown_request` to the member
-2. Member saves status to `.claude/teams/<name>/status/<role>.md`:
-   - Current task ID and subject
-   - Progress: done / remaining
-   - Key findings to carry forward
-   - Last action taken
-   - Files modified (uncommitted changes)
-3. After member confirms shutdown, spawn a NEW agent with the same role
-4. New agent reads the status file and picks up unfinished work
+**Rotate when a member reaches the rotation-points threshold** (default:
+3 points). Override: rotate immediately on observed quality degradation
+(repeated questions, missed instructions) regardless of points. Never
+rotate mid-task — wait until the member is idle.
 
-### Lead Rotation (your own context is high)
+**Two-step shutdown protocol:**
+
+1. Send a plain message: "Prepare for rotation — save your status to
+   `.claude/teams/<name>/status/<role>.md`: current task ID, progress
+   (done/remaining), key findings, uncommitted files."
+2. Wait for the member to confirm status is saved
+3. Send `shutdown_request`
+4. After member approves shutdown, spawn a NEW agent with the same role
+5. New agent reads the status file and picks up unfinished work
+
+### Lead Rotation (when to pause the team)
 
 When your own context is getting high:
 
@@ -471,7 +481,11 @@ Every member on spawn (or after rotation) bootstraps context:
 Agent({
   description: "Bootstrap context from status file",
   subagent_type: "Explore",
-  prompt: "Read <STATUS_FILE>. Extract: current state, recent results,
-           active/remaining tasks, key findings. Under 50 lines."
+  prompt: "Read <STATUS_FILE>. Also check if
+           .claude/teams/<team-name>/status/<role>.md exists and read
+           it — this contains handoff notes from the previous rotation
+           (unfinished tasks, key findings, uncommitted files).
+           Extract: current state, recent results, active/remaining
+           tasks, key findings, any rotation handoff. Under 50 lines."
 })
 ```
