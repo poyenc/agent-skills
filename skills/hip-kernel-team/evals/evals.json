@@ -1,0 +1,23 @@
+{
+  "skill_name": "hip-kernel-team",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "I need to optimize a CK GEMM kernel on gfx942. The kernel has 280 VGPRs and is spilling. I want a team to reduce register pressure and improve throughput. I'm running ROCm 6.2 in container `gemm-dev`. The kernel source is at `3rdparty/composable_kernel/include/ck_tile/ops/gemm/pipeline/block_gemm_pipeline.hpp`.",
+      "expected_output": "Skill should: (1) identify this as an optimization goal, (2) recommend Lead + Implementer + Profiler, (3) ask for constraints, (4) check for recall, (5) generate a config.md, (6) describe the team spawn plan",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "There's a correctness issue in our flash attention backward kernel — some gradient values are NaN on gfx950 but fine on gfx90a. Can you set up a team to investigate? Container is `fa-bwd-debug`, workspace `/root/workspace/aiter`.",
+      "expected_output": "Skill should: (1) identify this as a debug goal, (2) recommend Lead + Implementer (maybe + Researcher for ISA investigation), (3) ask for constraints, (4) generate config.md with debug-appropriate evaluation criteria",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I want to port the FlashDecoding algorithm from the paper to our CK framework. We need someone to study the paper and the existing triton implementation, then implement it in HIP C++. No recall plugin installed.",
+      "expected_output": "Skill should: (1) identify as research+implement goal, (2) recommend Lead + Implementer + Researcher, (3) note no recall → use project-local files, (4) generate config.md with research-oriented initial tasks",
+      "files": []
+    }
+  ]
+}
