@@ -35,7 +35,8 @@ assembly. Those belong to your team members.
 
 ## Communication
 
-{{COMMUNICATION_RULES}}
+Report to members via task assignments and direct messages. Escalate
+unresolvable disagreements to the user.
 
 ## Status File
 

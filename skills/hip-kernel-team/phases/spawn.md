@@ -46,32 +46,12 @@ Fill placeholders in each template with values from config:
 | `{{KEY_FILES}}` | Config Key Files section |
 | `{{TEAM_MEMBERS}}` | Roster of teammate names and roles |
 | `{{TEAM_MEMBERS_COUNT}}` | Number of team members (e.g., "4") |
-| `{{COMMUNICATION_RULES}}` | Generated from role pairs present (see below) |
 | `{{ENVIRONMENT}}` | Config Environment section |
 | `{{OUTPUT_DIR}}` | `/tmp/<team-name>/<role>/` |
 | `{{EVALUATION_CRITERIA}}` | Config Evaluation Criteria section |
 | `{{TEAM_NAME}}` | Team name |
 
-## 7. Generate communication rules
-
-Generate from the roles present. Only include pairs where both roles
-exist on the team:
-
-| From | To | When |
-|------|----|------|
-| Lead | Any | Task assignment, decisions, feedback |
-| Any | Lead | Reports, proposals, questions, escalations |
-| Implementer | Profiler | "Check assembly/perf after my change" |
-| Profiler | Implementer | "Analysis shows X, suggest Y at line Z" |
-| Researcher | Implementer | "Reference does X this way" |
-| Researcher | Profiler | "Reference has N instructions, compare" |
-| Profiler | Researcher | "How does reference handle X?" |
-| Implementer | Researcher | "How does reference implement X?" |
-
-**Escalation**: If members disagree, either escalates to Lead. Lead
-decides. If Lead can't decide, Lead asks user.
-
-## 8. Spawn member agents
+## 7. Spawn member agents
 
 Spawn each member (not Lead — Lead is you, the main conversation):
 
@@ -84,11 +64,11 @@ Agent({
 })
 ```
 
-## 9. Assign initial tasks
+## 8. Assign initial tasks
 
 Assign tasks via TaskUpdate.
 
-## 10. Begin operating as Lead
+## 9. Begin operating as Lead
 
 Follow the Lead instructions in `${CLAUDE_SKILL_DIR}/roles/lead.md`
 for the rest of the session.

@@ -32,7 +32,8 @@ internals, and ISA documentation.
 
 ## Communication
 
-{{COMMUNICATION_RULES}}
+Report to lead. DM peers when directly relevant. Escalate disagreements
+to lead.
 
 ## Key Files
 
