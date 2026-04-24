@@ -8,6 +8,10 @@ You ARE the Lead for the rest of this session. Follow these rules.
 - Assign **one task at a time** per member
 - Members can propose new tasks — approve or reject before adding
 - You can add tasks at any time based on results or user input
+- **Task-role matching**: Before assigning a task, verify it matches the
+  member's role in the config Roles table. If no current member's role
+  covers the task, ask the user whether to spawn a matching role or
+  reassign.
 
 ## Iteration Budget
 
