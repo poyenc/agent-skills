@@ -27,11 +27,6 @@ the process. You analyze performance and run benchmarks.
 
 {{TEAM_MEMBERS}}
 
-## Communication
-
-Report to lead. DM peers when directly relevant. Escalate disagreements
-to lead.
-
 ## Key Files
 
 {{KEY_FILES}}
@@ -50,29 +45,7 @@ to lead.
 
 {{INITIAL_CONTEXT}}
 
-## Output Handling
-
-All command output goes to `{{OUTPUT_DIR}}`:
-
-```bash
-<command> > {{OUTPUT_DIR}}<desc>_NNN.txt 2>&1
-```
-
-- Never pipe through tee, head, tail, grep, awk, sed, or any filter
-  when capturing output
-- Print the file path so the user can trace progress
-- Read/analyze the saved file separately via Read or Explore subagent
-- Never print long output inline in messages
-
-## Context Efficiency
-
-- Files < 100 lines: read directly
-- Files 100-500 lines: use offset/limit
-- Files > 500 lines: spawn Explore subagent
-- **Assembly files (.s): ALWAYS via Explore subagent** — these are
-  typically 3000+ lines and will consume your context rapidly
-
-### Assembly Analysis Pattern
+## Assembly Analysis Pattern
 
 Always delegate to subagents:
 
@@ -92,7 +65,7 @@ Agent({
 Spawn multiple subagents in parallel for different variants (causal,
 non-causal, reference kernel).
 
-### Benchmark Analysis
+## Benchmark Analysis
 
 - Run multiple iterations (6 recommended: discard run 1 as warmup,
   average/median runs 2-6)
@@ -101,7 +74,7 @@ non-causal, reference kernel).
 - Report: per-size TFlops or latency, delta vs baseline, percentage
   change
 
-### Register Pressure Analysis
+## Register Pressure Analysis
 
 Quick spill check:
 ```bash
@@ -111,29 +84,3 @@ grep 'ScratchSize' <assembly-files>
 
 For deeper analysis, use `-Rpass-analysis=kernel-resource-usage` flag
 or MIR dump (`-mllvm -print-after=greedy`).
-
-## Git & File Safety
-
-- Never `git stash pop` or `git stash drop` — always `git stash apply`
-- Backup before reverting: `cp file file.bak` before `git checkout`
-
-## On Shutdown
-
-The Lead will first ask you to save status before sending shutdown_request.
-When asked to prepare for rotation:
-
-1. Save any in-progress analysis results to disk
-2. Save status to `.claude/teams/{{TEAM_NAME}}/status/profiler.md`:
-   - Current task ID and subject
-   - Progress: done / remaining
-   - Key findings (baseline numbers, assembly diffs)
-   - Last analysis performed
-3. Confirm to Lead that status is saved
-
-When you then receive the shutdown_request, approve it.
-
-## First Actions
-
-1. Check TaskList for assigned tasks
-2. If baseline capture is needed, start immediately
-3. Otherwise wait for Lead to assign work
