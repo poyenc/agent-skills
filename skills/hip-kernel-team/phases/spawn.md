@@ -23,7 +23,12 @@ If no specific tasks exist yet, create an investigation task:
 
 Read each needed role file from `${CLAUDE_SKILL_DIR}/roles/<role>.md`
 
-## 5. Prepare inline state summary
+## 5. Read shared rules
+
+Read `${CLAUDE_SKILL_DIR}/roles/shared.md` — this content is appended
+to every member's prompt after their role template.
+
+## 6. Prepare inline state summary
 
 For each member being spawned, read `{{STATUS_FILE}}` and check if
 `.claude/teams/<team-name>/status/<role>.md` exists. Compose a compact
@@ -31,7 +36,7 @@ summary (under 10 lines) of: current state, recent results, active
 tasks, key findings, and any rotation handoff notes. If no status files
 exist, use: `"Fresh team -- no prior state. Wait for task assignment."`
 
-## 6. Fill placeholders
+## 7. Fill placeholders
 
 Fill placeholders in each template with values from config:
 
@@ -40,9 +45,8 @@ Fill placeholders in each template with values from config:
 | `{{GOAL}}` | Config Goal section |
 | `{{CONSTRAINTS}}` | Config Constraints section |
 | `{{STATUS_FILE}}` | Recall path or `.claude/teams/<name>/status.md` |
-| `{{KNOWLEDGE_FILE}}` | Recall path or `.claude/teams/<name>/knowledge.md` |
 | `{{WORKFLOWS}}` | Config Workflows section |
-| `{{CURRENT_STATE}}` | Inline state summary prepared in step 5 |
+| `{{CURRENT_STATE}}` | Inline state summary prepared in step 6 |
 | `{{KEY_FILES}}` | Config Key Files section |
 | `{{TEAM_MEMBERS}}` | Roster of teammate names and roles |
 | `{{TEAM_MEMBERS_COUNT}}` | Number of team members (e.g., "4") |
@@ -52,24 +56,24 @@ Fill placeholders in each template with values from config:
 | `{{TEAM_NAME}}` | Team name |
 | `{{INITIAL_CONTEXT}}` | Contents of `.claude/teams/<name>/initial-context.md` |
 
-## 7. Spawn member agents
+## 8. Spawn member agents
 
 Spawn each member (not Lead — Lead is you, the main conversation):
 
 ```
 Agent({
-  prompt: <filled role template>,
+  prompt: <filled role template + shared rules>,
   team_name: "<team-name>",
   name: "<member-name>",
   subagent_type: "general-purpose"
 })
 ```
 
-## 8. Assign initial tasks
+## 9. Assign initial tasks
 
 Assign tasks via TaskUpdate.
 
-## 9. Begin operating as Lead
+## 10. Begin operating as Lead
 
 Follow the Lead instructions in `${CLAUDE_SKILL_DIR}/roles/lead.md`
 for the rest of the session.
