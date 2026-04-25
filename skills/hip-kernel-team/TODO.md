@@ -31,3 +31,6 @@ Generated as a table per spawn but never enforced. Members message whoever they 
 
 ### Extract shared content from role templates
 Role templates embedded ~120 lines of duplicated content each. Extracted into `shared/briefing-template.md` — agents read it on demand instead of carrying it in their spawn prompt. **Status: templates updated but reverted by linter; needs re-application.**
+
+### 8. Initial context injection for teammates
+Teammates didn't receive CLAUDE.md rules, hook output, memory index, or skill listings. Added `{{INITIAL_CONTEXT}}` placeholder filled from `.claude/teams/<name>/initial-context.md`. Main agent writes the file during setup (step 7b) and regenerates on resume (step 3b). **Status: done — delta injection via file-based placeholder.**
