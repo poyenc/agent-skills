@@ -78,6 +78,45 @@ Generate a short kebab-case team name from the goal (e.g.,
 `ck-fmha-v3-opt`). Print a full summary of the config. Ask user to
 confirm.
 
+## Step 7b: Write Initial Context
+
+Write your pre-conversation context (the system-reminder content you
+received before the user's first message) to
+`.claude/teams/<team-name>/initial-context.md`.
+
+Use this format (~100 lines max):
+
+~~~markdown
+## CLAUDE.md Rules
+
+<key rules from global and project CLAUDE.md — git policies, edit
+conventions, output handling, commit style>
+
+## Project Directives
+
+<hook output: project directives, user profile, branch/task state —
+whatever hooks emitted, passed through verbatim>
+
+## Memory Index
+
+<MEMORY.md index lines — file pointers only, not file contents>
+
+## Available Skills
+
+<name — description — file path, one per line, user-created skills only>
+Note: You cannot invoke the Skill tool. To use a skill, Read its file
+at the listed path.
+~~~
+
+**Include/exclude guidelines:**
+
+| Section | Include | Exclude |
+|---------|---------|---------|
+| CLAUDE.md Rules | Git policies, edit conventions, output rules | Tool descriptions, system prompt boilerplate |
+| Project Directives | Whatever hooks emitted (verbatim) | Nothing — pass through as-is |
+| Memory Index | MEMORY.md lines (file pointers) | Memory file contents |
+| Available Skills | User-created skills with resolved file paths | Built-in superpowers skills (not on disk) |
+
 ## Step 8: Save & Spawn
 
 1. Save config to `.claude/teams/<team-name>/config.md`
