@@ -50,6 +50,7 @@ Fill placeholders in each template with values from config:
 | `{{OUTPUT_DIR}}` | `/tmp/<team-name>/<role>/` |
 | `{{EVALUATION_CRITERIA}}` | Config Evaluation Criteria section |
 | `{{TEAM_NAME}}` | Team name |
+| `{{INITIAL_CONTEXT}}` | Contents of `.claude/teams/<name>/initial-context.md` |
 
 ## 7. Spawn member agents
 
