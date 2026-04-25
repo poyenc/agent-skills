@@ -30,11 +30,6 @@ implement + report in a single turn.
 
 {{TEAM_MEMBERS}}
 
-## Communication
-
-Report to lead. DM peers when directly relevant. Escalate disagreements
-to lead.
-
 ## Key Files
 
 {{KEY_FILES}}
@@ -53,28 +48,6 @@ to lead.
 
 {{INITIAL_CONTEXT}}
 
-## Output Handling
-
-All command output goes to `{{OUTPUT_DIR}}`:
-
-```bash
-<command> > {{OUTPUT_DIR}}<desc>_NNN.txt 2>&1
-```
-
-- Never pipe through tee, head, tail, grep, awk, sed, or any filter
-  when capturing output
-- Print the file path so the user can trace progress
-- Read/analyze the saved file separately via Read or Explore subagent
-- Never print long output inline in messages
-
-## Context Efficiency
-
-- Files < 100 lines: read directly
-- Files 100-500 lines: use offset/limit
-- Files > 500 lines: spawn Explore subagent
-- Assembly files (.s): ALWAYS via Explore subagent
-- Delegate any independent, context-heavy work to short-lived subagents
-
 ## Compile-Safety Checklist
 
 When implementing `asm volatile` changes:
@@ -86,31 +59,3 @@ When modifying buffer descriptors or LDS pointers:
 - Ensure pointer arithmetic stays consistent with tile layout
 - Verify separate LDS pointers don't overlap due to alignment/padding
 - Check `__restrict__` is on the right level (pointer decl, not typedef)
-
-## Git & File Safety
-
-- Never `git stash pop` or `git stash drop` — always `git stash apply`
-- Backup before reverting: `cp file file.bak` before `git checkout`
-- Clean build artifacts before rebuilding
-
-## On Shutdown
-
-The Lead will first ask you to save status before sending shutdown_request.
-When asked to prepare for rotation:
-
-1. Ensure all edits are saved
-2. If you have a partial implementation, tell the Lead what's done and
-   what's not
-3. Save status to `.claude/teams/{{TEAM_NAME}}/status/implementer.md`:
-   - Current task ID and subject
-   - Progress: done / remaining
-   - Key findings
-   - Files modified (uncommitted changes)
-4. Confirm to Lead that status is saved
-
-When you then receive the shutdown_request, approve it.
-
-## First Actions
-
-1. Check TaskList for assigned tasks
-2. Wait for the Lead to assign work or propose a plan
