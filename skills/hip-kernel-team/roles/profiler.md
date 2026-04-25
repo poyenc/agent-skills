@@ -46,6 +46,10 @@ to lead.
 
 {{CURRENT_STATE}}
 
+## Session Context
+
+{{INITIAL_CONTEXT}}
+
 ## Output Handling
 
 All command output goes to `{{OUTPUT_DIR}}`:
