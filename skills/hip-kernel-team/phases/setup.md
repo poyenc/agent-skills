@@ -117,6 +117,11 @@ at the listed path.
 | Memory Index | MEMORY.md lines (file pointers) | Memory file contents |
 | Available Skills | User-created skills with resolved file paths | Built-in superpowers skills (not on disk) |
 
+**Tool note:** Use `Bash` with a heredoc (`cat <<'EOF' > path`) to
+write this file, not the Write tool. `initial-context.md` is fully
+generated content — Write's read-before-write guard adds no value here
+and will block on resume when the file already exists.
+
 ## Step 8: Save & Spawn
 
 1. Save config to `.claude/teams/<team-name>/config.md`

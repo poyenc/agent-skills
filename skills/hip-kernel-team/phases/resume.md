@@ -23,6 +23,11 @@
    teammates get current CLAUDE.md rules, memory, hook output, and skill
    listings — not stale snapshots from the original session.
 
+   **Tool note:** Use `Bash` with a heredoc (`cat <<'EOF' > path`) to
+   write this file, not the Write tool. `initial-context.md` is fully
+   generated content — Write's read-before-write guard adds no value
+   here and will block when the file already exists from a prior session.
+
 4. **Spawn team**: Read `${CLAUDE_SKILL_DIR}/phases/spawn.md` and follow
    it to re-spawn the team, assigning unfinished tasks to the appropriate
    members.
