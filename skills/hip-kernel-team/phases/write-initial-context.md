@@ -11,8 +11,8 @@ Find the `<system-reminder>` block whose first line starts with
 from session-start hooks.
 
 **If not found:** Warn the user: "No SessionStart hook output found
-— teammates will not receive session context." Write an empty file so
-the `{{INITIAL_CONTEXT}}` placeholder resolves cleanly:
+— teammates will not receive session context." Write a stub file so
+the hook has something to read:
 ```bash
 echo "(No session context available)" > .claude/teams/<team-name>/initial-context.md
 ```

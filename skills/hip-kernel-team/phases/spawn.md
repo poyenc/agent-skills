@@ -54,11 +54,10 @@ Fill placeholders in each template with values from config:
 | `{{OUTPUT_DIR}}` | `/tmp/<team-name>/<role>/` |
 | `{{EVALUATION_CRITERIA}}` | Config Evaluation Criteria section |
 | `{{TEAM_NAME}}` | Team name |
-| `{{INITIAL_CONTEXT}}` | Contents of `.claude/teams/<name>/initial-context.md` |
 
 ## 8. Spawn member agents
 
-Spawn each member (not Lead — Lead is you, the main conversation):
+Spawn each member (not Lead — Lead is you, the main conversation).
 
 ```
 Agent({

@@ -41,10 +41,6 @@ the process. You analyze performance and run benchmarks.
 
 {{CURRENT_STATE}}
 
-## Session Context
-
-{{INITIAL_CONTEXT}}
-
 ## Assembly Analysis Pattern
 
 Always delegate to subagents:

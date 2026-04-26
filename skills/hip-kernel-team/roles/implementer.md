@@ -44,10 +44,6 @@ implement + report in a single turn.
 
 {{CURRENT_STATE}}
 
-## Session Context
-
-{{INITIAL_CONTEXT}}
-
 ## Compile-Safety Checklist
 
 When implementing `asm volatile` changes:

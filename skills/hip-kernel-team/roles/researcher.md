@@ -44,10 +44,6 @@ internals, and ISA documentation.
 
 {{CURRENT_STATE}}
 
-## Session Context
-
-{{INITIAL_CONTEXT}}
-
 ## External Code Analysis Pattern
 
 Delegate reading to subagents and get structured summaries:
