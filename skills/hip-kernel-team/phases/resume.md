@@ -17,11 +17,18 @@
    Include: last completed task, any in-progress tasks, team composition,
    key recent results.
 
-3b. **Regenerate initial context**: Overwrite
-   `.claude/teams/<name>/initial-context.md` with your current session's
-   pre-conversation context. Same format as setup step 7b. This ensures
-   teammates get current CLAUDE.md rules, memory, hook output, and skill
-   listings — not stale snapshots from the original session.
+3b. **Regenerate initial context**: Copy your SessionStart hook output
+   (the `<system-reminder>` block labeled "SessionStart" that contains
+   hook-injected directives, project config, user profile, etc.)
+   **exactly as received** into
+   `.claude/teams/<team-name>/initial-context.md`.
+
+   Rules:
+   - **Do NOT modify, condense, summarize, or reword.** Copy verbatim.
+   - **Do NOT include** CLAUDE.md rules, skill listings, currentDate,
+     or gitStatus — the system auto-injects these into subagents.
+   - **Do NOT add** section headers, commentary, or formatting around
+     the hook output. Paste it as-is.
 
    **Tool note:** Use `Bash` with a heredoc (`cat <<'EOF' > path`) to
    write this file, not the Write tool. `initial-context.md` is fully
