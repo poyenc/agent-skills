@@ -78,11 +78,6 @@ Generate a short kebab-case team name from the goal (e.g.,
 `ck-fmha-v3-opt`). Print a full summary of the config. Ask user to
 confirm.
 
-## Step 7b: Write Initial Context
-
-Read `${CLAUDE_SKILL_DIR}/phases/write-initial-context.md` and follow
-it to generate `.claude/teams/<team-name>/initial-context.md`.
-
 ## Step 8: Save & Spawn
 
 1. Save config to `.claude/teams/<team-name>/config.md`

@@ -17,11 +17,7 @@
    Include: last completed task, any in-progress tasks, team composition,
    key recent results.
 
-3b. **Regenerate initial context**: Read
-   `${CLAUDE_SKILL_DIR}/phases/write-initial-context.md` and follow it
-   to generate `.claude/teams/<team-name>/initial-context.md`.
-
-3c. **Stop stale agents**: For each non-lead role in the config Roles
+3b. **Stop stale agents**: For each non-lead role in the config Roles
     table, send a `shutdown_request` via `SendMessage` to the role name.
     This terminates agents left over from prior sessions that weren't
     cleanly shut down, releasing their names. Ignore delivery failures

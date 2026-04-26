@@ -13,13 +13,6 @@ description: >
   "resume my kernel team", or "set up a dev team for this GPU kernel".
 user-invocable: true
 argument-hint: "[load <name> | list | update <name>]"
-hooks:
-  PreToolUse:
-    - matcher: "Agent"
-      hooks:
-        - type: command
-          # Workaround: ${CLAUDE_SKILL_DIR} not expanded in frontmatter (claude-code#36135)
-          command: "~/.claude/skills/hip-kernel-team/scripts/inject-team-context.sh"
 ---
 
 # HIP Kernel Team

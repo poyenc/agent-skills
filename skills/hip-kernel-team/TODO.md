@@ -30,10 +30,10 @@ Both contain lead instructions with overlap. `lead.md` says "injected into main 
 Generated as a table per spawn but never enforced. Members message whoever they want. Replace with a single sentence: "Report to lead; DM peers when directly relevant." Remove the generation step from spawn.md. **Status: done — context-bloat reduction.**
 
 ### Extract shared content from role templates
-Role templates embedded ~120 lines of duplicated content each. Extracted into `shared/briefing-template.md` — agents read it on demand instead of carrying it in their spawn prompt. **Status: templates updated but reverted by linter; needs re-application.**
+Role templates embedded ~120 lines of duplicated content each. Extracted into `roles/shared.md` — appended to every member's spawn prompt (see spawn.md step 5). **Status: done.**
 
 ### 9. Task decomposition pipeline templates
 When a task requires multiple team roles, the lead had no standard pipeline templates. Added `phases/decompose.md` with 4 pipeline patterns (Optimize, Experiment, Investigate, Hotfix), decision framework for iteration/re-entry, escape hatch rules, handoff protocol, and pipeline proposal protocol. One reference line added to `lead.md`. **Status: done.**
 
-### 8. Initial context injection for teammates
-Teammates didn't receive SessionStart hook output (directives, user profile, project config). Lead generates `.claude/teams/<name>/initial-context.md` via `phases/write-initial-context.md` (called by setup step 7b and resume step 3b). A skill-scoped PreToolUse hook (`scripts/inject-team-context.sh`) automatically prepends the file content to any Agent call with a `team_name` parameter. **Status: done — v3: replaced `{{INITIAL_CONTEXT}}` placeholder with PreToolUse hook injection.**
+### 8. Context injection for teammates
+Claude Code fires session-start hooks for each spawned teammate agent natively. CLAUDE.md files provide directives and user preferences. No skill-level injection needed. **Status: removed — context generation phase, injection hook script, setup step 7b, and resume step 3b all deleted.**
