@@ -97,6 +97,18 @@ b) "Create investigation tasks for the team and propose next steps"
 c) "Shut down team"
 Only (c) ends the team.
 
+### Full Team Shutdown Procedure
+
+When the user chooses (c):
+
+1. For each member: send "Prepare for rotation — save your status to
+   `.claude/teams/{{TEAM_NAME}}/status/<role>.md`"
+2. Wait for each member to confirm status is saved
+3. Send `shutdown_request` to each member
+4. After all members have confirmed shutdown, call `TeamDelete` to
+   remove the team registration and free agent names for future sessions
+
+
 ## Member Rotation
 
 Track each member's completed tasks: heavy=1 point, light=0.5 points.
