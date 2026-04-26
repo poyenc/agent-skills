@@ -17,23 +17,9 @@
    Include: last completed task, any in-progress tasks, team composition,
    key recent results.
 
-3b. **Regenerate initial context**: Copy your SessionStart hook output
-   (the `<system-reminder>` block labeled "SessionStart" that contains
-   hook-injected directives, project config, user profile, etc.)
-   **exactly as received** into
-   `.claude/teams/<team-name>/initial-context.md`.
-
-   Rules:
-   - **Do NOT modify, condense, summarize, or reword.** Copy verbatim.
-   - **Do NOT include** CLAUDE.md rules, skill listings, currentDate,
-     or gitStatus — the system auto-injects these into subagents.
-   - **Do NOT add** section headers, commentary, or formatting around
-     the hook output. Paste it as-is.
-
-   **Tool note:** Use `Bash` with a heredoc (`cat <<'EOF' > path`) to
-   write this file, not the Write tool. `initial-context.md` is fully
-   generated content — Write's read-before-write guard adds no value
-   here and will block when the file already exists from a prior session.
+3b. **Regenerate initial context**: Read
+   `${CLAUDE_SKILL_DIR}/phases/write-initial-context.md` and follow it
+   to generate `.claude/teams/<team-name>/initial-context.md`.
 
 3c. **Stop stale agents**: For each non-lead role in the config Roles
     table, send a `shutdown_request` via `SendMessage` to the role name.
