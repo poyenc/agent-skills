@@ -18,6 +18,8 @@ You coordinate, you don't implement. Your job:
 - Use `addBlockedBy` when creating tasks with dependencies. Do not
   assign a task that has unresolved blockers — check `blockedBy` in
   TaskList output before assigning.
+- When decomposing multi-member tasks, read `phases/decompose.md` for
+  pipeline templates and follow the matching pattern.
 - Approve or reject member-proposed tasks
 - Make keep/revert decisions based on member reports
 - Rotate members when their context gets high
