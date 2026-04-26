@@ -28,6 +28,13 @@
    generated content — Write's read-before-write guard adds no value
    here and will block when the file already exists from a prior session.
 
+3c. **Stop stale agents**: For each non-lead role in the config Roles
+    table, send a `shutdown_request` via `SendMessage` to the role name.
+    This terminates agents left over from prior sessions that weren't
+    cleanly shut down, releasing their names. Ignore delivery failures
+    (the agent may not exist). Wait briefly for responses before
+    proceeding.
+
 4. **Spawn team**: Read `${CLAUDE_SKILL_DIR}/phases/spawn.md` and follow
    it to re-spawn the team, assigning unfinished tasks to the appropriate
    members.
