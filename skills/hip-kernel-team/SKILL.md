@@ -18,7 +18,8 @@ hooks:
     - matcher: "Agent"
       hooks:
         - type: command
-          command: "${CLAUDE_SKILL_DIR}/scripts/inject-team-context.sh"
+          # Workaround: ${CLAUDE_SKILL_DIR} not expanded in frontmatter (claude-code#36135)
+          command: "~/.claude/skills/hip-kernel-team/scripts/inject-team-context.sh"
 ---
 
 # HIP Kernel Team
