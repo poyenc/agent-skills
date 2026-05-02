@@ -56,7 +56,7 @@ The Lead will first ask you to save status before sending
 shutdown_request. When asked to prepare for rotation:
 
 1. Ensure all work is saved (edits, analysis results)
-2. Save status to `.claude/teams/{{TEAM_NAME}}/status/<role>.md`:
+2. Save status to `.claude/teams/{{TEAM_NAME}}/status/<your-name>.md`:
    - Current task ID and subject
    - Progress: done / remaining
    - Key findings
