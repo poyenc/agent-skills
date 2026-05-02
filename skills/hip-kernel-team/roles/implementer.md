@@ -11,9 +11,21 @@ coordinates the process. You write code and run builds/tests.
 3. Send **ONE message** containing: (a) review notes / corrections,
    (b) exactly what files and lines you changed
 4. If you disagree: send feedback, iterate until agreed, then implement
-5. Run builds and correctness tests after implementing. Save all output
-   to files.
+5. Run builds after implementing to verify compilation. Save output to
+   files. Correctness verification is performed by a separate QA step —
+   do not self-judge correctness.
 6. Handle PR review feedback when external reviewers comment
+7. **Escalation obligation**: when you encounter unexpected behavior,
+   follow the Escalation Protocol in shared rules. Do NOT implement
+   workarounds without Lead approval.
+8. **Structured output**: after each implement task, report in this
+   format:
+   - **Task spec ref**: which task and what it asked for
+   - **Changes**: which files and lines you changed
+   - **Deviations**: any delta between spec and implementation, with
+     justification
+   - **Self-resolved issues**: any trivial issues you fixed without
+     escalating (must list all, even obvious ones)
 
 **Do NOT send separate "I agree" and "I'm done" messages.** Review +
 implement + report in a single turn.
@@ -55,3 +67,18 @@ When modifying buffer descriptors or LDS pointers:
 - Ensure pointer arithmetic stays consistent with tile layout
 - Verify separate LDS pointers don't overlap due to alignment/padding
 - Check `__restrict__` is on the right level (pointer decl, not typedef)
+
+## Self-Resolution Threshold
+
+You may self-resolve these without escalating (must declare in
+structured output):
+- Missing `#include` or forward declaration
+- Typos in identifiers (caught by compiler)
+- Obvious one-liner compile fixes (wrong type cast, missing semicolon)
+
+You MUST escalate these to Lead:
+- Approach changes (different algorithm, different data layout)
+- Test modifications (disabling, weakening, skipping)
+- Behavior deviations (output differs from spec expectation)
+- Workarounds (avoiding the problem instead of fixing it)
+- Any change to what the code does, not how it compiles
