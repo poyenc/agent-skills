@@ -26,27 +26,34 @@ budget from the lead role applies.
 
 ### Optimize
 
-**Pattern:** research → implement → benchmark
+**Pattern:** research → implement → QA verify → benchmark
 **Use when:** Chasing a perf gap with an unknown root cause.
 
 ```
-Stage 1: Research    → researcher  → output: /tmp/<team>/researcher/<topic>.md
-Stage 2: Implement   → implementer → blockedBy: stage 1 → code changes + test log
-Stage 3: Benchmark   → profiler    → blockedBy: stage 2 → benchmark results
+Stage 1: Research    → researcher  → output: /tmp/<team>/researcher-<topic>/<topic>.md
+Stage 2: Implement   → implementer → blockedBy: stage 1 → code changes + structured output
+Stage 2a: QA verify  → lead spawns QA subagent (not a task) → PASS/FAIL
+Stage 3: Benchmark   → profiler    → blockedBy: stage 2 (QA pass) → benchmark + diagnosis if regression
 ```
 
+- **QA rule:** Lead spawns QA subagent between stage 2 and 3. Not a
+  task — an inline subagent call. Benchmark is not assigned until QA
+  passes.
+- **Diagnosis rule:** If profiler detects regression, investigation is
+  inline within the benchmark task (rocprof, ATT, stall analysis).
 - **Revert scope:** Stage 2 code changes only. Research is always kept.
 - **Naming:** `"<goal>: research"`, `"<goal>: implement"`,
   `"<goal>: benchmark"`.
 
 ### Experiment
 
-**Pattern:** implement → benchmark
+**Pattern:** implement → QA verify → benchmark
 **Use when:** The change is known, just needs to be tried and measured.
 
 ```
-Stage 1: Implement   → implementer → code changes + test log
-Stage 2: Benchmark   → profiler    → blockedBy: stage 1 → benchmark results
+Stage 1: Implement   → implementer → code changes + structured output
+Stage 1a: QA verify  → lead spawns QA subagent (not a task) → PASS/FAIL
+Stage 2: Benchmark   → profiler    → blockedBy: stage 1 (QA pass) → benchmark + diagnosis if regression
 ```
 
 - **Revert scope:** Stage 1 code changes only.
@@ -69,21 +76,22 @@ Stage 2:     Synthesize → lead   → blockedBy: all stage 1 → status.md upda
 
 ### Hotfix
 
-**Pattern:** implement → test → benchmark (optional)
+**Pattern:** implement → QA verify → benchmark (optional)
 **Use when:** Correctness fix where perf is secondary.
 
 ```
-Stage 1: Implement   → implementer → code changes
-Stage 2: Test        → implementer → blockedBy: stage 1 → test log
-Stage 3: Benchmark   → profiler    → blockedBy: stage 2 → OPTIONAL
+Stage 1: Implement   → implementer → code changes + structured output
+Stage 1a: QA verify  → lead spawns QA subagent (not a task) → PASS/FAIL
+Stage 2: Benchmark   → profiler    → blockedBy: stage 1 (QA pass) → OPTIONAL
 ```
 
+- **QA rule:** QA performs clean rebuild + full test suite. Especially
+  important for hotfixes since correctness is the primary concern.
 - **Revert scope:** Stage 1 code changes only.
-- **Stage 3 rule:** Include when the fix touches kernel code (pipeline
+- **Stage 2 rule:** Include when the fix touches kernel code (pipeline
   headers, policy headers, kernel wrappers). Skip with justification
   for non-kernel fixes (test infra, build scripts, dispatch logic).
-- **Naming:** `"<goal>: implement"`, `"<goal>: test"`,
-  `"<goal>: benchmark"`.
+- **Naming:** `"<goal>: implement"`, `"<goal>: benchmark"`.
 
 ---
 
@@ -143,6 +151,11 @@ Handoff between stages uses output file paths:
 
 No structured handoff documents. No direct peer messages for handoff —
 all routing goes through lead via task assignments.
+
+**QA subagent handoff:** QA is not part of the handoff chain. The Lead
+spawns QA as an inline subagent between stages — it reads the
+implementer's structured output and the task spec directly. No file
+handoff needed for QA.
 
 ---
 
