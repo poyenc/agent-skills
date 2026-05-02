@@ -36,6 +36,87 @@ summarize member output files for your own coordination decisions.
 Subagents are not teammates — they don't join the team roster or take
 task assignments.
 
+## On-Demand Roles
+
+You have three on-demand roles available at all times. They are NOT
+listed in the config Roles table — they are built into your operating
+rules.
+
+### QA Verifier (subagent)
+
+**Trigger:** After every implement stage completes — mandatory, no
+escape hatch.
+
+**How to spawn:**
+
+```
+Agent({
+  description: "QA verify: <task subject>",
+  subagent_type: "general-purpose",
+  model: "<model from On-Demand Models config, or 'sonnet'>",
+  prompt: "<content of roles/qa.md with placeholders filled>\n\n" +
+          "## Task Spec\n<the task description>\n\n" +
+          "## Implementer Output\n<the implementer's structured report>\n\n" +
+          "## Commands\nBuild: <build command>\nTest: <test command>\n\n" +
+          "## Output Directory\n<output dir>"
+})
+```
+
+**On PASS:** proceed to benchmark stage.
+**On FAIL:** route QA's specific feedback to the implementer. After fix,
+re-spawn QA to re-verify. Do not proceed to benchmark until QA passes.
+
+### Debugger (subagent)
+
+**Trigger:** Implementer escalates unexpected behavior.
+
+**How to spawn:**
+
+```
+Agent({
+  description: "Debug: <issue summary>",
+  subagent_type: "general-purpose",
+  model: "<model from On-Demand Models config, or 'opus'>",
+  prompt: "<content of roles/debugger.md with placeholders filled>\n\n" +
+          "## Escalation Report\n<implementer's report>\n\n" +
+          "## Source Files\n<relevant file paths>\n\n" +
+          "## Commands\nBuild: <build command>\nTest: <test command>\n\n" +
+          "## Output Directory\n/tmp/<team>/debugger-<issue>/"
+})
+```
+
+**After report:** Decide based on root cause and severity:
+- Trivial/moderate fix → assign fix to implementer
+- Structural → reassess the approach, possibly create new research task
+- Spec misunderstanding → clarify spec with user, update task
+
+### Researcher (full team member)
+
+**Trigger:** Knowledge gap identified mid-pipeline, or user requests
+research.
+
+**How to spawn:**
+
+```
+Agent({
+  description: "Research: <topic>",
+  subagent_type: "general-purpose",
+  model: "<model from On-Demand Models config, or 'opus'>",
+  name: "researcher-<topic>",
+  team_name: "<team-name>",
+  prompt: "<content of roles/researcher.md with placeholders filled>"
+})
+```
+
+**Naming:** Always by topic (`researcher-lds`, `researcher-scheduling`),
+never by index. Create output dir: `/tmp/<team>/researcher-<topic>/`.
+
+**After findings:** Write an Implementation Brief (see below) to
+translate research into actionable guidance for the implementer.
+
+**Shutdown:** After findings are delivered and Implementation Brief is
+written, send shutdown_request.
+
 ## Goal
 
 {{GOAL}}
@@ -76,11 +157,58 @@ fundamentally unviable.
 ## Decision Loop
 
 ```
-Member reports results →
-  Keep   → commit, update status, mark done, assign next
-  Fix    → feedback to member, iterate (within budget)
-  Revert → backup first, revert, document findings, next task
+Implementer reports done →
+  Spawn QA subagent (mandatory) →
+    QA PASS → assign benchmark to profiler
+    QA FAIL → route feedback to implementer → re-implement → re-QA
+  Profiler reports results →
+    Keep   → commit, update status, mark done, assign next
+    Fix    → feedback to implementer, iterate (within budget)
+    Revert → backup first, revert, document findings, next task
+  Implementer escalates bug →
+    Spawn Debugger subagent →
+    Debugger reports root cause →
+    Decide: fix / workaround-with-justification / pivot
 ```
+
+## Implementation Brief
+
+When routing research findings to the implementer, write an
+Implementation Brief as the task description. Do not assign a vague
+"implement X" task — the brief IS the task description.
+
+```markdown
+**Based on:** Research task #N findings (<output file path>)
+
+### What to do
+<specific changes: which files, which pattern, expected result>
+
+### Key constraints from research
+<what the research found that constrains the implementation>
+
+### What NOT to do
+<anti-patterns the research identified>
+
+### Acceptance criteria
+<concrete checks QA will verify against>
+```
+
+When multiple researchers report findings on the same topic, synthesize
+their outputs into a single brief. Resolve conflicts between findings
+before writing the brief — do not pass conflicting guidance to the
+implementer.
+
+## File Ownership
+
+Before assigning parallel implement tasks:
+
+1. Identify which files each task will modify
+2. If two tasks touch the same file → serialize with `addBlockedBy`
+3. If no overlap → safe to parallelize
+
+Never assign two implementers to the same file concurrently. This
+includes on-demand researcher-turned-implementer scenarios — check
+file sets before assigning.
 
 ## Status Updates
 
