@@ -16,29 +16,38 @@ Based on the goal, recommend a team composition from the role catalog.
 Present your recommendation and reasoning, then ask the user to confirm
 or override.
 
-**Role catalog** (each member has a unique role, no duplicates):
+**Permanent role catalog** (user picks from these at setup):
 
 | Role | Core Function |
 |------|--------------|
-| **Lead** | Task list management, team coordination, keep/revert decisions, member rotation. Runs in the main conversation (not spawned). Always present. |
-| **Implementer** | Code editing (HIP/C++/Python), build, correctness tests, PR feedback handling |
-| **Profiler** | Assembly analysis, HW counter profiling (rocprofv3), benchmarking, ISA comparison |
-| **Researcher** | External code/paper analysis, compiler internals investigation, ISA docs |
+| **Lead** | Task list management, team coordination, QA/Debugger spawn, keep/revert decisions, member rotation. Runs in the main conversation (not spawned). Always present. |
+| **Implementer** | Code editing (HIP/C++/Python), build, structured output for QA, escalation-based workflow |
+| **Profiler** | Assembly analysis, HW counter profiling (rocprofv3), benchmarking, regression diagnosis, ISA comparison |
+
+**On-demand roles** (always available, Lead spawns per pipeline rules):
+
+| Role | Spawn Type | Trigger |
+|------|-----------|---------|
+| **QA** | Subagent | After every implement stage (mandatory) |
+| **Debugger** | Subagent | On implementer escalation |
+| **Researcher** | Full team member | Knowledge gap or user request |
 
 **Recommendation table:**
 
-| Goal Pattern | Recommended Roles | Why |
-|-------------|------------------|-----|
-| Optimize existing kernel | Lead + Implementer + Profiler | Need assembly analysis + benchmarking |
-| Debug correctness issue | Lead + Implementer | Tight build-test loop |
-| Port algorithm from paper/reference | Lead + Implementer + Researcher | Need external research |
-| Full development (new kernel) | Lead + Implementer + Profiler + Researcher | All lifecycle phases |
-| Investigate perf regression | Lead + Profiler + Researcher | Analysis-heavy, minimal code changes |
+| Goal Pattern | Permanent Roles | Notes |
+|---|---|---|
+| Optimize existing kernel | Lead + Implementer + Profiler | Researcher on-demand if investigation needed |
+| Debug correctness issue | Lead + Implementer + Profiler | Baseline + verify fix doesn't regress perf |
+| Port algorithm from paper/reference | Lead + Implementer + Profiler | Researcher on-demand for paper analysis |
+| Full development (new kernel) | Lead + Implementer + Profiler | Researcher on-demand |
+| Investigate perf regression | Lead + Profiler | Researcher on-demand. Implementer on-demand for fixes |
 
 **Soft warnings** (don't block, just inform):
-- Profiler without Implementer: "Who will implement the findings?"
-- Researcher without Implementer: "Who will write the code?"
+- Implementer without Profiler: "Profiler is needed to verify perf
+  meets production requirements."
 - Only Lead: "Lead can absorb other roles but the team will be slower."
+- Only Lead + Profiler: "An Implementer will be spawned on-demand if
+  code changes are needed."
 
 ## Step 3: Constraints
 
@@ -71,6 +80,16 @@ Ask: "Build/test/bench commands? (or 'team will figure out')"
 
 If recall is present and a workflows.md exists for the detected task,
 offer to auto-populate: "Found existing workflows in recall. Use those?"
+
+## Step 6b: Model Selection
+
+Ask: "Model preference for each member? (default: all inherit from
+parent session, or specify per-role — e.g., 'profiler: sonnet')"
+
+Also ask: "Model preferences for on-demand roles? (default: QA=sonnet,
+Debugger=opus, Researcher=opus)"
+
+If user says "default" or skips, use the defaults above.
 
 ## Step 7: Team Name & Confirmation
 
@@ -112,10 +131,18 @@ created: <YYYY-MM-DD>
 
 ## Roles
 
-| Name | Role | Notes |
-|------|------|-------|
-| lead | Lead | Coordinator (main conversation) |
-| <name> | <Role> | <notes> |
+| Name | Role | Model | Notes |
+|------|------|-------|-------|
+| lead | Lead | (parent) | Coordinator (main conversation) |
+| <name> | <Role> | <model> | <notes> |
+
+## On-Demand Models
+
+| Role | Model | Notes |
+|------|-------|-------|
+| QA | sonnet | Subagent, verification |
+| Debugger | opus | Subagent, root cause analysis |
+| Researcher | opus | Full team member, deep analysis |
 
 ## Environment
 
