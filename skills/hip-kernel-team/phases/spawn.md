@@ -11,8 +11,10 @@ TeamCreate({ team_name: "<team-name>" })
 ## 2. Create output directories
 
 ```bash
-mkdir -p /tmp/<team-name>/<role>/ # for each member role
+mkdir -p /tmp/<team-name>/<member-name>/ # for each permanent member, using their NAME not role
 ```
+
+On-demand roles get their directories created at spawn time by the Lead.
 
 ## 3. Create initial tasks
 
@@ -59,18 +61,28 @@ Fill placeholders in each template with values from config:
 
 Spawn each member (not Lead — Lead is you, the main conversation).
 
+Read the `Model` column from the config Roles table for each member.
+If `(parent)` or empty, omit the `model` parameter.
+
 ```
 Agent({
   prompt: <filled role template + shared rules>,
   team_name: "<team-name>",
   name: "<member-name>",
-  subagent_type: "general-purpose"
+  subagent_type: "general-purpose",
+  model: "<model from config Roles table, omit if '(parent)'>"
 })
 ```
 
-## 9. Assign initial tasks
+## 9. Ask user for direction
 
-Assign tasks via TaskUpdate.
+Do NOT auto-create investigation tasks. Instead, ask the user:
+
+> "Team is ready — <N> members standing by (<list names and roles>).
+> What should we work on first?"
+
+Wait for the user's answer. Then decompose into tasks using the
+appropriate pipeline template from `decompose.md` and assign.
 
 ## 10. Begin operating as Lead
 
