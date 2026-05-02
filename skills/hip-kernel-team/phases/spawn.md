@@ -18,8 +18,8 @@ On-demand roles get their directories created at spawn time by the Lead.
 
 ## 3. Create initial tasks
 
-If no specific tasks exist yet, create an investigation task:
-"Investigate: understand current state and propose initial task list"
+For resumed teams, carry forward unfinished tasks from the prior
+session. For new teams, skip — direction comes from the user in step 9.
 
 ## 4. Read role templates
 
@@ -33,7 +33,7 @@ to every member's prompt after their role template.
 ## 6. Prepare inline state summary
 
 For each member being spawned, read `{{STATUS_FILE}}` and check if
-`.claude/teams/<team-name>/status/<role>.md` exists. Compose a compact
+`.claude/teams/<team-name>/status/<member-name>.md` exists. Compose a compact
 summary (under 10 lines) of: current state, recent results, active
 tasks, key findings, and any rotation handoff notes. If no status files
 exist, use: `"Fresh team -- no prior state. Wait for task assignment."`
@@ -53,7 +53,7 @@ Fill placeholders in each template with values from config:
 | `{{TEAM_MEMBERS}}` | Roster of teammate names and roles |
 | `{{TEAM_MEMBERS_COUNT}}` | Number of team members (e.g., "4") |
 | `{{ENVIRONMENT}}` | Config Environment section |
-| `{{OUTPUT_DIR}}` | `/tmp/<team-name>/<role>/` |
+| `{{OUTPUT_DIR}}` | `/tmp/<team-name>/<member-name>/` |
 | `{{EVALUATION_CRITERIA}}` | Config Evaluation Criteria section |
 | `{{TEAM_NAME}}` | Team name |
 

@@ -144,7 +144,7 @@ Examples:
 
 Handoff between stages uses output file paths:
 
-1. Upstream member saves results to `/tmp/<team>/<role>/`
+1. Upstream member saves results to `/tmp/<team>/<member-name>/`
 2. Upstream member reports completion to lead with the file path
 3. Lead references the file path in the downstream task description
 4. Downstream member reads the file to get context

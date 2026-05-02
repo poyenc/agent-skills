@@ -70,15 +70,9 @@ When modifying buffer descriptors or LDS pointers:
 
 ## Self-Resolution Threshold
 
-You may self-resolve these without escalating (must declare in
-structured output):
-- Missing `#include` or forward declaration
-- Typos in identifiers (caught by compiler)
-- Obvious one-liner compile fixes (wrong type cast, missing semicolon)
-
-You MUST escalate these to Lead:
+See Escalation Protocol in shared rules for self-resolution threshold.
+Additional implementer-specific triggers that MUST be escalated:
 - Approach changes (different algorithm, different data layout)
 - Test modifications (disabling, weakening, skipping)
 - Behavior deviations (output differs from spec expectation)
 - Workarounds (avoiding the problem instead of fixing it)
-- Any change to what the code does, not how it compiles

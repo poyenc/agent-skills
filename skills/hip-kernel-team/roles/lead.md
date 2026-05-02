@@ -266,7 +266,7 @@ work (e.g., waiting for a command to finish, analysis in progress).
 
 1. **1st unproductive idle**: send a check-in message asking for status
 2. **2nd unproductive idle**: read their output files in
-   `/tmp/<team-name>/<role>/` directly to assess progress
+   `/tmp/<team-name>/<member-name>/` directly to assess progress
 3. **3rd unproductive idle**: reassign the task to the same role (rotate
    the member if needed) or escalate to user
 
