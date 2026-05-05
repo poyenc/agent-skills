@@ -5,6 +5,11 @@
 #   BUILD_SELECTOR: "lastBuild" (default), "lastFailedBuild", or a build number like "4"
 #
 # Output: prints a markdown report to stdout, saves full console to /tmp/ci-console-PR-<N>.txt
+#
+# Optimizations over naive approach:
+#   - Single browser session reused for both console extraction and Blue Ocean API deep dive
+#   - No sleep waits between page navigations
+#   - Blue Ocean REST API for structured stage/step/log access (no DOM heuristics)
 
 set -euo pipefail
 
@@ -15,6 +20,8 @@ SESSION="ci-${PR}-$$"
 CONSOLE_RAW="/tmp/ci-console-raw-PR-${PR}.txt"
 CONSOLE="/tmp/ci-console-PR-${PR}.txt"
 REPORT="/tmp/ci-report-PR-${PR}.md"
+STAGE_LOG="/tmp/ci-stage-log-${PR}.txt"
+STAGE_ERRORS="/tmp/ci-stage-errors-${PR}.txt"
 
 cleanup() {
     playwright-cli -s="${SESSION}" close 2>/dev/null || true
@@ -29,61 +36,43 @@ playwright-cli -s="${SESSION}" open --browser=msedge \
 # ---------- 2. Check page loaded correctly ----------
 PAGE_TITLE=$(playwright-cli -s="${SESSION}" --raw eval "document.title" 2>/dev/null || echo '"Error"')
 
-# Detect 404 / error page
 if echo "${PAGE_TITLE}" | grep -qi "Error\|404\|not found\|Problem"; then
-    # Close browser before generating report
     playwright-cli -s="${SESSION}" close 2>/dev/null || true
     trap - EXIT
-    echo "No builds found. Generating report..." >&2
+    echo "No builds found." >&2
     {
         echo "## CI Report: PR #${PR}"
         echo "**Result:** NO BUILDS"
         echo ""
         echo "No CI builds found for this PR. The build may not have been triggered yet."
     } > "${REPORT}"
-    echo "========================================" >&2
     echo "Report saved to: ${REPORT}" >&2
-    echo "========================================" >&2
-    echo "" >&2
     cat "${REPORT}"
     exit 0
 fi
 
-# ---------- 3. Extract build metadata from page title ----------
-# Title format: "rocm-libraries >> ... #4 Console - Jenkins"
+# ---------- 3. Extract build number and console text ----------
 BUILD_NUM=$(echo "${PAGE_TITLE}" | sed -n 's/.*#\([0-9]*\).*/\1/p' | head -1)
 BUILD_NUM="${BUILD_NUM:-unknown}"
+echo "Build #${BUILD_NUM}. Extracting console..." >&2
 
-# ---------- 4. Extract console output ----------
-echo "Extracting console output..." >&2
-
-# Get the full console text as a JSON-escaped string
 playwright-cli -s="${SESSION}" --raw eval \
     "document.querySelector('pre.console-output')?.textContent || ''" \
     > "${CONSOLE_RAW}" 2>/dev/null
 
-# Decode JSON string to plain text using node
 node -e "
 var fs = require('fs');
-var inFile = process.argv[1];
-var outFile = process.argv[2];
-var raw = fs.readFileSync(inFile, 'utf8').trim();
-try { fs.writeFileSync(outFile, JSON.parse(raw)); }
-catch(e) { fs.writeFileSync(outFile, raw); }
+var raw = fs.readFileSync(process.argv[1], 'utf8').trim();
+try { fs.writeFileSync(process.argv[2], JSON.parse(raw)); }
+catch(e) { fs.writeFileSync(process.argv[2], raw); }
 " -- "${CONSOLE_RAW}" "${CONSOLE}"
 
-# ---------- 5. Close browser early to free resources ----------
-playwright-cli -s="${SESSION}" close 2>/dev/null || true
-trap - EXIT
-echo "Browser closed. Processing log..." >&2
+# NOTE: Browser session kept open for Phase 2 deep dive (no close here)
+echo "Processing log..." >&2
 
-# ---------- 6. Analyze the console log ----------
-TOTAL_LINES=$(wc -l < "${CONSOLE}" | tr -d ' ')
-
-# Last line typically has "Finished: SUCCESS/FAILURE/ABORTED"
+# ---------- 4. Analyze the console log ----------
 RESULT_LINE=$(tail -5 "${CONSOLE}" | grep -i "Finished:" | tail -1 || echo "Unknown")
 
-# Extract error/exception lines (skip Java stack traces, Pipeline noise, skipped stages)
 grep -n -i 'error\|exception\|FAILURE\|fatal\|abort' "${CONSOLE}" \
     | grep -v '^\s*at ' \
     | grep -v 'PluginClassLoader' \
@@ -102,36 +91,24 @@ grep -n -i 'error\|exception\|FAILURE\|fatal\|abort' "${CONSOLE}" \
     | head -30 \
     > /tmp/ci-errors-${PR}.txt 2>/dev/null || true
 
-# Extract skipped stages
 grep 'skipped due to' "${CONSOLE}" \
     | sed 's/.*Stage "/  - /; s/" skipped.*//' \
     > /tmp/ci-skipped-${PR}.txt 2>/dev/null || true
 SKIP_COUNT=$(wc -l < /tmp/ci-skipped-${PR}.txt | tr -d ' ')
 
-# Extract the key exception message (usually the most informative single line)
 KEY_EXCEPTION=$(grep -i 'HttpException\|AbortException\|IOException\|FlowInterruptedException\|RuntimeException\|CompilationFailedException\|CMake Error\|make.*Error\|ninja.*error\|FAILED:' \
     "${CONSOLE}" \
     | grep -v '^\s*at ' \
     | head -5 || echo "")
 
-# Extract stage-related events
-grep -i 'throwing error\|gitStatusWrapper\|Stage.*skipped\|FATAL\|Build step.*marked' \
-    "${CONSOLE}" \
-    | head -10 \
-    > /tmp/ci-stage-events-${PR}.txt 2>/dev/null || true
-
-# Extract the failing stage name
-# Find the first error/exception line number, then search backward for the stage name
 FIRST_ERROR_LINE=$(grep -n -i 'throwing error exception for the stage\|Exception occurred:\|FAILED:\|CMake Error\|make.*Error\|ninja.*error' \
     "${CONSOLE}" | head -1 | cut -d: -f1 || echo "")
 FAILING_STAGE=""
 if [ -n "${FIRST_ERROR_LINE}" ]; then
-    # Search backward from the error line for a stage declaration
     FAILING_STAGE=$(head -n "${FIRST_ERROR_LINE}" "${CONSOLE}" \
         | grep -o 'Stage "[^"]*"' \
         | tail -1 \
         | sed 's/Stage "//;s/"//' || echo "")
-    # If no Stage "..." found, try [Pipeline] stage pattern
     if [ -z "${FAILING_STAGE}" ]; then
         FAILING_STAGE=$(head -n "${FIRST_ERROR_LINE}" "${CONSOLE}" \
             | grep '\[Pipeline\] stage' \
@@ -140,7 +117,6 @@ if [ -n "${FIRST_ERROR_LINE}" ]; then
             | sed 's/.*stage (\(.*\))/\1/' || echo "")
     fi
 fi
-# If still empty, try "Failed in branch <name>" near the error
 if [ -z "${FAILING_STAGE}" ] && [ -n "${FIRST_ERROR_LINE}" ]; then
     SEARCH_END=$((FIRST_ERROR_LINE + 20))
     FAILING_STAGE=$(sed -n "${FIRST_ERROR_LINE},${SEARCH_END}p" "${CONSOLE}" \
@@ -150,22 +126,20 @@ if [ -z "${FAILING_STAGE}" ] && [ -n "${FIRST_ERROR_LINE}" ]; then
 fi
 FAILING_STAGE="${FAILING_STAGE:-Unknown}"
 
-# Get last 50 lines for context
 tail -50 "${CONSOLE}" > /tmp/ci-tail-${PR}.txt 2>/dev/null || true
 
-# ---------- 7. Detect success vs failure ----------
+# ---------- 5. Detect success vs failure ----------
 IS_SUCCESS=false
 if echo "${RESULT_LINE}" | grep -qi 'SUCCESS'; then
     IS_SUCCESS=true
 fi
 
-# Extract build timestamp from RESULT_LINE or last timestamp in log
 BUILD_TIMESTAMP=$(echo "${RESULT_LINE}" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}  +[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -1 || echo "")
 if [ -z "${BUILD_TIMESTAMP}" ]; then
     BUILD_TIMESTAMP=$(grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}  +[0-9]{2}:[0-9]{2}:[0-9]{2}' "${CONSOLE}" | tail -1 || echo "Unknown")
 fi
 
-# ---------- 8. Generate report ----------
+# ---------- 6. Generate report ----------
 {
     if [ "${IS_SUCCESS}" = true ]; then
         echo "## CI Report: PR #${PR} (Build #${BUILD_NUM})"
@@ -212,46 +186,33 @@ fi
     fi
 } > "${REPORT}"
 
-# ---------- 9. Deep dive into stage logs via Blue Ocean REST API ----------
+# ---------- 7. Deep dive via Blue Ocean REST API (reuses same browser session) ----------
 IS_INFRA=false
 if [ -n "${KEY_EXCEPTION}" ]; then
     echo "${KEY_EXCEPTION}" | grep -qi 'HttpException\|credential\|token\|forbids access\|GitHub' && IS_INFRA=true
 fi
 
-STAGE_LOG="/tmp/ci-stage-log-${PR}.txt"
-STAGE_ERRORS="/tmp/ci-stage-errors-${PR}.txt"
 BO_BASE="http://micimaster.amd.com/blue/rest/organizations/jenkins/pipelines/rocm-libraries-folder/pipelines/Composable%20Kernel/branches/PR-${PR}/runs/${BUILD_NUM}"
 
 if [ "${IS_SUCCESS}" = false ] && [ "${IS_INFRA}" = false ]; then
-    echo "Analyzing stage logs via Blue Ocean API..." >&2
+    echo "Deep dive via Blue Ocean API..." >&2
 
-    DEEP_SESSION="ci-deep-${PR}-${BUILD_NUM}"
-
-    deep_cleanup() {
-        playwright-cli -s="${DEEP_SESSION}" close 2>/dev/null || true
-    }
-    trap deep_cleanup EXIT
-
-    # Step 1: Get all pipeline nodes and find the first FAILURE stage
-    playwright-cli -s="${DEEP_SESSION}" open --browser=msedge \
+    # Step 1: Get nodes, find first FAILURE/ABORTED stage
+    playwright-cli -s="${SESSION}" open --browser=msedge \
         "${BO_BASE}/nodes/?limit=200" >/dev/null 2>&1
-    sleep 1
 
     BO_NODES_RAW="${STAGE_LOG}.nodes.raw"
-    playwright-cli -s="${DEEP_SESSION}" --raw eval \
+    playwright-cli -s="${SESSION}" --raw eval \
         "(document.querySelector('pre')||document.body).textContent" \
         > "${BO_NODES_RAW}" 2>/dev/null
 
-    # Find the first FAILURE or ABORTED node (stage)
     FAILED_NODE=$(node -e "
 var fs = require('fs');
 var raw = fs.readFileSync(process.argv[1], 'utf8').trim();
 var nodes;
 try { nodes = JSON.parse(JSON.parse(raw)); } catch(e) { nodes = JSON.parse(raw); }
 var failed = nodes.filter(function(n) { return n.result === 'FAILURE' || n.result === 'ABORTED'; });
-if (failed.length > 0) {
-    console.log(failed[0].id + '|' + failed[0].displayName);
-}
+if (failed.length > 0) console.log(failed[0].id + '|' + failed[0].displayName);
 " -- "${BO_NODES_RAW}" 2>/dev/null || echo "")
 
     FAILED_NODE_ID=$(echo "${FAILED_NODE}" | cut -d'|' -f1)
@@ -260,13 +221,12 @@ if (failed.length > 0) {
     if [ -n "${FAILED_NODE_ID}" ]; then
         echo "Failed stage: ${FAILED_NODE_NAME} (node ${FAILED_NODE_ID})" >&2
 
-        # Step 2: Get steps for this failed node, find the first FAILURE Shell Script
-        playwright-cli -s="${DEEP_SESSION}" open --browser=msedge \
+        # Step 2: Get steps, find first FAILURE/ABORTED Shell Script
+        playwright-cli -s="${SESSION}" open --browser=msedge \
             "${BO_BASE}/nodes/${FAILED_NODE_ID}/steps/?limit=200" >/dev/null 2>&1
-        sleep 1
 
         BO_STEPS_RAW="${STAGE_LOG}.steps.raw"
-        playwright-cli -s="${DEEP_SESSION}" --raw eval \
+        playwright-cli -s="${SESSION}" --raw eval \
             "(document.querySelector('pre')||document.body).textContent" \
             > "${BO_STEPS_RAW}" 2>/dev/null
 
@@ -281,8 +241,8 @@ if (failed.length > 0) {
     var dur = ms > 3600000 ? Math.round(ms/3600000)+'hr' : ms > 60000 ? Math.round(ms/60000)+'min' : Math.round(ms/1000)+'s';
     console.log(failed[0].id + '|' + dur);
 } else {
-    var anyFailed = steps.filter(function(s) { return s.result === 'FAILURE' || s.result === 'ABORTED'; });
-    if (anyFailed.length > 0) console.log(anyFailed[0].id + '|0s');
+    var a = steps.filter(function(s) { return s.result === 'FAILURE' || s.result === 'ABORTED'; });
+    if (a.length > 0) console.log(a[0].id + '|0s');
 }
 " -- "${BO_STEPS_RAW}" 2>/dev/null || echo "")
 
@@ -292,12 +252,11 @@ if (failed.length > 0) {
         if [ -n "${FAILED_STEP_ID}" ]; then
             echo "Failed step: ${FAILED_STEP_ID} (${FAILED_STEP_DUR})" >&2
 
-            # Step 3: Get the log for this failed step
-            playwright-cli -s="${DEEP_SESSION}" open --browser=msedge \
+            # Step 3: Get the log
+            playwright-cli -s="${SESSION}" open --browser=msedge \
                 "${BO_BASE}/nodes/${FAILED_NODE_ID}/steps/${FAILED_STEP_ID}/log/" >/dev/null 2>&1
-            sleep 1
 
-            playwright-cli -s="${DEEP_SESSION}" --raw eval \
+            playwright-cli -s="${SESSION}" --raw eval \
                 "(document.querySelector('pre')||document.body).textContent" \
                 > "${STAGE_LOG}.raw" 2>/dev/null
 
@@ -310,7 +269,6 @@ catch(e) { fs.writeFileSync(process.argv[2], raw); }
 
             STAGE_LINES=$(wc -l < "${STAGE_LOG}" 2>/dev/null | tr -d ' ')
 
-            # Extract error lines
             grep -n -i 'error[: !]\|\[  FAILED  \]\|fatal error\|undefined reference\|FAILED:\|segfault\|signal [0-9]' "${STAGE_LOG}" \
                 | grep -v 'build errors in the future' \
                 | head -30 \
@@ -318,12 +276,10 @@ catch(e) { fs.writeFileSync(process.argv[2], raw); }
 
             STAGE_ERROR_COUNT=$(wc -l < "${STAGE_ERRORS}" 2>/dev/null | tr -d ' ')
 
-            # Get GTest/CTest summary if present
             GTEST_PASSED=$(grep -oE '\[  PASSED  \] [0-9]+ test' "${STAGE_LOG}" | grep -oE '[0-9]+' | head -1 || echo "")
             GTEST_FAILED=$(grep -oE '[0-9]+ FAILED TEST' "${STAGE_LOG}" | grep -oE '[0-9]+' | head -1 || echo "")
             CTEST_FAILED=$(grep -oE 'The following tests FAILED:' "${STAGE_LOG}" | head -1 || echo "")
 
-            # Append to report
             {
                 echo ""
                 echo "### Stage Log Analysis"
@@ -366,11 +322,11 @@ catch(e) { fs.writeFileSync(process.argv[2], raw); }
     else
         echo "No FAILURE stage found via Blue Ocean API." >&2
     fi
-
-    # Close browser
-    playwright-cli -s="${DEEP_SESSION}" close 2>/dev/null || true
-    trap - EXIT
 fi
+
+# ---------- 8. Close browser and output report ----------
+playwright-cli -s="${SESSION}" close 2>/dev/null || true
+trap - EXIT
 
 echo "========================================" >&2
 echo "Report saved to: ${REPORT}" >&2

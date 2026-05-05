@@ -16,14 +16,14 @@ Investigate Jenkins CI build failures for Composable Kernel PRs and produce a co
 
 - **`playwright-cli`**: Must be installed globally (`npm install -g @playwright/cli@latest`)
 - **`node`**: Required for JSON decoding
-- **Script**: `ci-report.sh` (bundled with this skill)
+- **Script**: `scripts/ci-report.sh` (bundled with this skill)
 
 ## Setup
 
 Copy or symlink the script to `~/.claude/scripts/`:
 
 ```bash
-cp <skill-dir>/ci-report.sh ~/.claude/scripts/ci-report.sh
+cp <skill-dir>/scripts/ci-report.sh ~/.claude/scripts/ci-report.sh
 chmod +x ~/.claude/scripts/ci-report.sh
 ```
 
