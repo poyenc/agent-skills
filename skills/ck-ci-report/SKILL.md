@@ -14,8 +14,8 @@ Investigate Jenkins CI build failures for Composable Kernel PRs and produce a co
 
 ## Prerequisites
 
-- **`playwright-cli`**: Must be installed globally (`npm install -g @playwright/cli@latest`)
-- **`node`**: Required for JSON decoding
+- **`curl`**: With Kerberos auth support (`--negotiate`)
+- **`python3`**: Required for JSON parsing
 - **Script**: `scripts/ci-report.sh` (bundled with this skill, no setup needed)
 
 ## Step 1: Get the PR number
@@ -138,6 +138,6 @@ sed -n '<LINE-5>,<LINE+5>p' /tmp/ci-stage-log-<N>.txt
 
 - The Jenkins base URL pattern is:
   `http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job/PR-<NUMBER>/`
-- The script uses Edge browser (`--browser=msedge`) by default
-- Browser is closed automatically after extracting the console output
-- For very large console outputs (long compilation logs), extraction may take a few seconds
+- The script uses `curl --negotiate` with Kerberos auth (no browser needed)
+- Uses Blue Ocean REST API for structured stage/step/log data instead of parsing full consoleText
+- Full consoleText is downloaded in the background as a saved artifact for manual review
