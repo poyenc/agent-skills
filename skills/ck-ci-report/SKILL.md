@@ -16,16 +16,7 @@ Investigate Jenkins CI build failures for Composable Kernel PRs and produce a co
 
 - **`playwright-cli`**: Must be installed globally (`npm install -g @playwright/cli@latest`)
 - **`node`**: Required for JSON decoding
-- **Script**: `scripts/ci-report.sh` (bundled with this skill)
-
-## Setup
-
-Copy or symlink the script to `~/.claude/scripts/`:
-
-```bash
-cp <skill-dir>/scripts/ci-report.sh ~/.claude/scripts/ci-report.sh
-chmod +x ~/.claude/scripts/ci-report.sh
-```
+- **Script**: `scripts/ci-report.sh` (bundled with this skill, no setup needed)
 
 ## Step 1: Get the PR number
 
@@ -42,7 +33,7 @@ Run the script to extract and analyze the console output. The script handles bro
 console extraction, and initial parsing — saving tokens by doing the heavy lifting in bash.
 
 ```bash
-bash ~/.claude/scripts/ci-report.sh <PR_NUMBER> [BUILD_SELECTOR]
+bash <skill-dir>/scripts/ci-report.sh <PR_NUMBER> [BUILD_SELECTOR]
 ```
 
 Arguments:
