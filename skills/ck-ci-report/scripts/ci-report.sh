@@ -209,11 +209,19 @@ if [ "${IS_SUCCESS}" = false ] && [ "${IS_INFRA}" = false ]; then
     FAILED_NODE=$(node -e "
 var fs = require('fs');
 var raw = fs.readFileSync(process.argv[1], 'utf8').trim();
+var stageName = process.argv[2] || '';
 var nodes;
 try { nodes = JSON.parse(JSON.parse(raw)); } catch(e) { nodes = JSON.parse(raw); }
 var failed = nodes.filter(function(n) { return n.result === 'FAILURE' || n.result === 'ABORTED'; });
-if (failed.length > 0) console.log(failed[0].id + '|' + failed[0].displayName);
-" -- "${BO_NODES_RAW}" 2>/dev/null || echo "")
+if (failed.length === 0) process.exit(0);
+// Prefer the node matching the stage name identified from console analysis
+var pick = failed[0];
+if (stageName) {
+    var match = failed.filter(function(n) { return n.displayName === stageName; });
+    if (match.length > 0) pick = match[0];
+}
+console.log(pick.id + '|' + pick.displayName);
+" -- "${BO_NODES_RAW}" "${FAILING_STAGE}" 2>/dev/null || echo "")
 
     FAILED_NODE_ID=$(echo "${FAILED_NODE}" | cut -d'|' -f1)
     FAILED_NODE_NAME=$(echo "${FAILED_NODE}" | cut -d'|' -f2-)
