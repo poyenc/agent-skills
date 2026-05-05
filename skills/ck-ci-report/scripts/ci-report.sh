@@ -45,14 +45,56 @@ ts = d.get('timestamp', 0)
 dt = datetime.datetime.fromtimestamp(ts / 1000, tz=datetime.timezone.utc)
 out = open(sys.argv[2], 'w')
 out.write(f'BUILD_NUM={d["number"]}\n')
-out.write(f'BUILD_RESULT={d.get("result", "")}\n')
+out.write(f'BUILD_RESULT={d.get("result") or ""}\n')
 out.write(f'BUILD_TIMESTAMP="{dt.strftime("%Y-%m-%d  %H:%M:%S")}"\n')
 PYEOF
 source "${BUILD_VARS}"
 
 echo "Build #${BUILD_NUM} (${BUILD_RESULT:-in progress})." >&2
 
-# ---------- 2. Handle SUCCESS ----------
+# ---------- 2. Handle IN PROGRESS ----------
+if [ -z "${BUILD_RESULT}" ]; then
+    # Build is still running — gather stage progress from Blue Ocean API
+    BO_BASE="http://micimaster.amd.com/blue/rest/organizations/jenkins/pipelines/rocm-libraries-folder/pipelines/Composable%20Kernel/branches/PR-${PR}/runs/${BUILD_NUM}"
+    BO_NODES_RAW="/tmp/ci-nodes-${PR}.json"
+    ${CURL} "${BO_BASE}/nodes/?limit=200" > "${BO_NODES_RAW}" 2>/dev/null || echo "[]" > "${BO_NODES_RAW}"
+
+    PROGRESS=$(python3 - "${BO_NODES_RAW}" <<'PYEOF'
+import json, sys
+nodes = json.load(open(sys.argv[1]))
+running = [n for n in nodes if n.get('state') == 'RUNNING']
+finished = [n for n in nodes if n.get('state') == 'FINISHED']
+queued = [n for n in nodes if n.get('state') in ('QUEUED', 'NOT_BUILT', None)]
+total = len(nodes)
+if running:
+    names = ', '.join(n['displayName'] for n in running)
+    print(f'RUNNING_STAGES="{names}"')
+else:
+    print('RUNNING_STAGES=""')
+print(f'FINISHED_COUNT={len(finished)}')
+print(f'TOTAL_COUNT={total}')
+PYEOF
+    )
+    eval "${PROGRESS}"
+
+    {
+        echo "## CI Report: PR #${PR} (Build #${BUILD_NUM})"
+        echo "**Result:** IN PROGRESS"
+        echo "**Build at:** ${BUILD_TIMESTAMP}"
+        echo ""
+        if [ -n "${RUNNING_STAGES}" ]; then
+            echo "**Currently running:** ${RUNNING_STAGES}"
+        else
+            echo "**Status:** Build is starting up (no stages running yet)"
+        fi
+        echo "**Progress:** ${FINISHED_COUNT}/${TOTAL_COUNT} stages completed"
+    } > "${REPORT}"
+    echo "Report saved to: ${REPORT}" >&2
+    cat "${REPORT}"
+    exit 0
+fi
+
+# ---------- 2b. Handle SUCCESS ----------
 if [ "${BUILD_RESULT}" = "SUCCESS" ]; then
     {
         echo "## CI Report: PR #${PR} (Build #${BUILD_NUM})"

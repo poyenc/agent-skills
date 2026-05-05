@@ -71,6 +71,19 @@ No CI builds found for this PR. The build may not have been triggered yet.
 
 No further analysis needed.
 
+### If the build is IN PROGRESS:
+
+```
+CI Report: PR #<PR_NUMBER> (Build #<BUILD_NUMBER>)
+Result: IN PROGRESS
+Build at: <DATE> <TIME>
+
+Currently running: <STAGE_NAMES>
+Progress: X/Y stages completed
+```
+
+No failure analysis needed. Just relay the progress to the user.
+
 ### If the build SUCCEEDED:
 
 ```
