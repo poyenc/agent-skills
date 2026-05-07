@@ -7,6 +7,7 @@ A collection of Claude Code agent skills for specialized tasks.
 | Skill | Description |
 |-------|-------------|
 | **[ck-kernel-resource-usage](skills/ck-kernel-resource-usage/SKILL.md)** | Analyze GPU kernel resource usage (VGPRs, AGPRs, SGPRs, occupancy, scratch memory, LDS, register spills) by building a CK target with `-Rpass-analysis=kernel-resource-usage` and parsing the build log. |
+| **[ck-ci-build](skills/ck-ci-build/SKILL.md)** | Trigger Jenkins CI builds for Composable Kernel PRs with optional parameter overrides. Uses curl for status checks and playwright-cli for browser-based build triggering. Supports saved parameter presets, in-progress build detection, and dry-run mode. |
 | **[ck-ci-report](skills/ck-ci-report/SKILL.md)** | Analyze CI build failures for Composable Kernel PRs on the Jenkins dashboard. Uses playwright-cli for browser automation and the Blue Ocean REST API for deep-dive stage log extraction. Handles success, failure, aborted, infra, and no-build cases. |
 | **[ck-fmha-codegen-guide](skills/ck-fmha-codegen-guide/SKILL.md)** | Generate comprehensive FMHA kernel selection guides by dynamically analyzing CK codegen source code. Produces filename structure docs, field references, minimal kernel sets, and filter commands for `generate.py`. |
 | **[ck-list-fmha-prs](skills/ck-list-fmha-prs/SKILL.md)** | List open pull requests from ROCm/rocm-libraries focused on fused multi-head attention (FMHA) kernels. |
