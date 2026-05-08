@@ -28,6 +28,15 @@ SESSION="ck-ci"
 PW="playwright-cli -s=${SESSION}"
 
 SAVED_DIR="${HOME}/.claude/ck-ci-build"
+BROWSER="msedge"
+
+# Load config (browser preference)
+CONFIG_FILE="${SAVED_DIR}/config"
+if [ -f "${CONFIG_FILE}" ]; then
+    _cfg_browser=$(grep '^BROWSER=' "${CONFIG_FILE}" | head -1 | cut -d= -f2)
+    [ -n "${_cfg_browser}" ] && BROWSER="${_cfg_browser}"
+fi
+
 PR=""
 DRY_RUN=false
 LIST_PARAMS=false
@@ -48,6 +57,8 @@ Options:
   -dry-run             Show what would happen without triggering
   -list-params         List available build parameters and exit
   -no-saved            Ignore saved settings, use Jenkins defaults
+  -browser <name>      Browser for playwright (msedge, chrome, firefox, webkit)
+                       Overrides config for this run only
   -h, --help           Show this help
 EOF
     exit 1
@@ -83,6 +94,10 @@ while [[ $# -gt 0 ]]; do
         -no-saved)
             NO_SAVED=true
             shift
+            ;;
+        -browser)
+            BROWSER="${2:?Error: -browser requires a browser name}"
+            shift 2
             ;;
         -h|--help)
             usage
@@ -243,7 +258,7 @@ trap cleanup EXIT
 
 echo "" >&2
 echo "Opening browser..." >&2
-${PW} open "${JOB_URL}/" --browser=msedge --persistent > /dev/null 2>&1
+${PW} open "${JOB_URL}/" --browser=${BROWSER} --persistent > /dev/null 2>&1
 
 # Check for login redirect
 PAGE_URL=$(${PW} --raw eval "location.href")
