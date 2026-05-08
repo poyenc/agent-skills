@@ -79,6 +79,7 @@ Arguments:
 - `-option KEY=VALUE` (repeatable): Override a build parameter. Booleans accept ON/OFF/true/false/1/0
 - `-dry-run`: Show what would happen without actually triggering
 - `-list-params`: List all available build parameters with defaults and exit
+- `-browser <name>`: Override browser for this run (msedge, chrome, firefox, webkit). Does not update saved config.
 
 Common parameter overrides:
 - `RUN_CK_TILE_FMHA_TESTS=ON` — Enable FMHA tests
@@ -99,7 +100,7 @@ The script operates in two phases:
 - Exits early for `-dry-run`
 
 **Phase 2 — playwright-cli (browser automation):**
-- Opens Edge with a persistent browser profile (SSO session is reused)
+- Opens the configured browser with a persistent profile (SSO session is reused)
 - Detects whether the page shows "Build Now" (first build) or "Build with Parameters"
 - Applies parameter overrides by manipulating the Jenkins form DOM
 - Clicks the Build button to trigger
@@ -122,5 +123,7 @@ If the script fails, check common issues:
 - The Jenkins base URL is: `http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job/PR-<N>/`
 - First builds use the "Build Now" button (no parameters available in Jenkins UI)
 - Subsequent builds use "Build with Parameters" with all options exposed
-- The persistent browser profile is stored in `~/.ck-ci-build/browser-data/`
+- The persistent browser profile is managed by `playwright-cli` (session `ck-ci`)
+- Saved build parameters and browser preference are stored in `~/.claude/ck-ci-build/`
+- Use `-browser <name>` to override the browser for a single run
 - Use the companion `ck-ci-report` skill to check build results after triggering
