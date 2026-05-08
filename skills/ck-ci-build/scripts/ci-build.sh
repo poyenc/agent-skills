@@ -17,7 +17,7 @@
 #
 # Parameter persistence:
 #   When you trigger a build with -option flags, those settings are saved to
-#   ~/.ck-ci-build/saved-params-PR-<N>.conf. Next time you run without -option,
+#   ~/.claude/ck-ci-build/saved-params-PR-<N>.conf. Next time you run without -option,
 #   the saved settings are loaded automatically. Use -no-saved to ignore them.
 
 set -euo pipefail
@@ -27,7 +27,7 @@ CURL="curl -sfg --negotiate -u :"
 SESSION="ck-ci"
 PW="playwright-cli -s=${SESSION}"
 
-SAVED_DIR="${HOME}/.ck-ci-build"
+SAVED_DIR="${HOME}/.claude/ck-ci-build"
 PR=""
 DRY_RUN=false
 LIST_PARAMS=false
