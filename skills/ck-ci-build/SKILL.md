@@ -14,7 +14,39 @@ Trigger Jenkins CI builds for Composable Kernel PRs and optionally override buil
 - **`python3`**: For JSON parsing
 - **Script**: `scripts/ci-build.sh` (bundled with this skill)
 
-## Step 1: Get the PR number
+## Step 1: Check browser preference
+
+Before running the script, check if `~/.claude/ck-ci-build/config` exists.
+
+**If it does NOT exist** (first-time use), ask the user which browser to use:
+
+Use `AskUserQuestion` with these options:
+- **Microsoft Edge** (Recommended) — maps to config value `msedge`
+- **Google Chrome** — maps to config value `chrome`
+- **Firefox** — maps to config value `firefox`
+- **Other** — let the user type the playwright-cli browser name (e.g., `webkit`)
+
+**Browser name mapping** — normalize user input to playwright-cli values:
+
+| User says (case-insensitive)      | Config value |
+|-----------------------------------|--------------|
+| Edge / Microsoft Edge / msedge    | `msedge`     |
+| Chrome / Google Chrome            | `chrome`     |
+| Firefox                           | `firefox`    |
+| Webkit / Safari                   | `webkit`     |
+| (anything else)                   | stored as-is |
+
+Then write the config:
+```bash
+mkdir -p ~/.claude/ck-ci-build
+echo "BROWSER=<value>" > ~/.claude/ck-ci-build/config
+```
+
+**If it DOES exist:** skip the question. The script reads the config automatically.
+
+To override the browser for a single run, pass `-browser <name>` to the script (ephemeral, does not update config).
+
+## Step 2: Get the PR number
 
 If the user hasn't provided a PR number, **ask for it** using AskUserQuestion. The PR number
 is the GitHub PR number (e.g., 6498 from `ROCm/rocm-libraries/pull/6498`).
@@ -23,7 +55,7 @@ The user may also provide a full Jenkins URL like:
 `http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job/PR-6498/`
 Extract the PR number from the URL.
 
-## Step 2: List available parameters and let the user choose
+## Step 3: List available parameters and let the user choose
 
 Once you have the PR number, **always run `-list-params` first** to show what options are
 available. This lets the user decide which toggles to change before triggering.
@@ -36,7 +68,7 @@ Present the parameter list to the user and ask which ones they want to override 
 Use AskUserQuestion with common toggles as options if appropriate, or let them specify freely.
 If the user already specified options in their request, skip the question and proceed directly.
 
-## Step 3: Run the script
+## Step 4: Run the script
 
 ```bash
 bash <skill-dir>/scripts/ci-build.sh -pr <PR_NUMBER> [-option KEY=VALUE]... [-dry-run] [-list-params]
@@ -72,7 +104,7 @@ The script operates in two phases:
 - Applies parameter overrides by manipulating the Jenkins form DOM
 - Clicks the Build button to trigger
 
-## Step 4: Report the result
+## Step 5: Report the result
 
 After the script runs, tell the user:
 
