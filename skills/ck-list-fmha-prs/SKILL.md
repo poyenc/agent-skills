@@ -36,10 +36,16 @@ This skill maintains a state file to avoid re-scanning PRs that have already bee
 
 ## Step 1: Load pending work
 
-Determine the skill directory (the directory containing this SKILL.md file). Run the companion script:
+Resolve the skill directory first:
 
 ```bash
-bash <skill-dir>/scripts/fmha-pr-scan.sh \
+SKILL_DIR=$(cd "$(dirname "$(readlink -f ~/.claude/skills/ck-list-fmha-prs/SKILL.md)")" && pwd)
+```
+
+Run the companion script:
+
+```bash
+bash $SKILL_DIR/scripts/fmha-pr-scan.sh \
     --state-file ~/.claude/projects/-mnt-c-Users-poyechen-workspace-repo-rocm-libraries/fmha-pr-state.yaml \
     list-pending [--full-scan]
 ```
@@ -52,7 +58,7 @@ Parse the YAML output. It contains:
 - `to_verify.ambiguous` — new PRs with non-matching titles
 - `confirmed_open` — previously confirmed FMHA PRs still open
 
-If both `to_verify.obvious_fmha` and `to_verify.ambiguous` are empty, skip to Step 3 — there are no new PRs to verify.
+If both `to_verify.obvious_fmha` and `to_verify.ambiguous` are empty, skip to Step 3 (do NOT skip Step 3 itself — it must always run).
 
 ## Step 2: Verify new PRs via subagents
 
@@ -113,7 +119,9 @@ A PR is **NOT** FMHA-focused if it only:
 
 ## Step 3: Commit results
 
-Merge the verified FMHA PRs from Step 2 with the `confirmed_open` PRs from Step 1. For each newly confirmed PR, include: `number`, `title`, `author`, `url`, `category`, `summary`, `created_at`.
+**Always run this step, even if Step 2 was skipped.** The `confirmed_open` list may have changed (closed/merged PRs removed), and this step persists that update.
+
+Merge the verified FMHA PRs from Step 2 (if any) with the `confirmed_open` PRs from Step 1. For each newly confirmed PR, include: `number`, `title`, `author`, `url`, `category`, `summary`, `created_at`.
 
 Build a YAML document with this structure and pipe it to the script:
 
@@ -130,10 +138,18 @@ confirmed_fmha_prs:
 ```
 
 ```bash
-cat <<'EOF' | bash <skill-dir>/scripts/fmha-pr-scan.sh \
+cat <<'EOF' | bash $SKILL_DIR/scripts/fmha-pr-scan.sh \
     --state-file ~/.claude/projects/-mnt-c-Users-poyechen-workspace-repo-rocm-libraries/fmha-pr-state.yaml \
     commit-results
-<the YAML content>
+last_scanned_pr: 7312
+confirmed_fmha_prs:
+  - number: 7016
+    title: "[CK] Fix RDNA3/RDNA4 FMHA tile-load paths"
+    author: jammm
+    url: https://github.com/ROCm/rocm-libraries/pull/7016
+    category: Kernel
+    summary: "Fixes RDNA3/RDNA4 tile-load paths for FMHA."
+    created_at: "2026-05-02T07:21:10Z"
 EOF
 ```
 

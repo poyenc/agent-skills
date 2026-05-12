@@ -41,8 +41,25 @@ assert_contains() {
 mkdir -p "$MOCK_DIR"
 cat > "$MOCK_DIR/gh" << 'MOCK_GH'
 #!/usr/bin/env bash
-# Mock gh: returns canned PR data from GH_MOCK_DATA_FILE
-cat "$GH_MOCK_DATA_FILE"
+# Mock gh: handles REST API and GraphQL calls
+# GH_MOCK_DATA_FILE  - canned REST PR data
+# GH_MOCK_GQL_FILE   - canned GraphQL response (optional)
+# GH_MOCK_FAIL       - if "1", exit with error
+
+if [[ "${GH_MOCK_FAIL:-}" == "1" ]]; then
+    echo "mock: simulated gh failure" >&2
+    exit 1
+fi
+
+if [[ "$1" == "api" ]] && [[ "$2" == "graphql" ]]; then
+    if [[ -n "${GH_MOCK_GQL_FILE:-}" ]]; then
+        cat "$GH_MOCK_GQL_FILE"
+    else
+        echo '{"data":{}}'
+    fi
+else
+    cat "$GH_MOCK_DATA_FILE"
+fi
 MOCK_GH
 chmod +x "$MOCK_DIR/gh"
 
@@ -92,8 +109,20 @@ cat > "$TEST_DIR/mock-prs.json" << 'MOCK_DATA'
 ]
 MOCK_DATA
 
+# --- Default GraphQL mock: all PRs have FMHA files (so ambiguous passes through) ---
+cat > "$TEST_DIR/mock-gql-all-fmha.json" << 'GQL_DATA'
+{
+  "data": {
+    "pr_101": {"pullRequest": {"number": 101, "files": {"nodes": [{"path": "ops/fmha/fwd.hpp"}]}}},
+    "pr_104": {"pullRequest": {"number": 104, "files": {"nodes": [{"path": "ops/fmha/bwd.hpp"}]}}}
+  }
+}
+GQL_DATA
+
 run_script() {
-    GH_MOCK_DATA_FILE="$TEST_DIR/mock-prs.json" PATH="$MOCK_DIR:$PATH" \
+    GH_MOCK_DATA_FILE="$TEST_DIR/mock-prs.json" \
+    GH_MOCK_GQL_FILE="${GH_MOCK_GQL_FILE:-$TEST_DIR/mock-gql-all-fmha.json}" \
+    PATH="$MOCK_DIR:$PATH" \
         bash "$SCRIPT" "$@"
 }
 
@@ -254,7 +283,9 @@ confirmed_fmha_prs:
     created_at: "2026-01-01T00:00:00Z"
 STATE_YAML
 
-OUTPUT=$(GH_MOCK_DATA_FILE="$TEST_DIR/mock-prs-closed.json" PATH="$MOCK_DIR:$PATH" \
+OUTPUT=$(GH_MOCK_DATA_FILE="$TEST_DIR/mock-prs-closed.json" \
+    GH_MOCK_GQL_FILE="$TEST_DIR/mock-gql-all-fmha.json" \
+    PATH="$MOCK_DIR:$PATH" \
     bash "$SCRIPT" --state-file "$STATE" list-pending)
 
 # PR 100 was confirmed but is no longer open -> should NOT appear in confirmed_open
@@ -306,6 +337,71 @@ else
     echo "  PASS: rejected missing confirmed_fmha_prs"
     PASS=$((PASS + 1))
 fi
+
+# =============================================================
+echo ""
+echo "=== Test 7: --full-scan with commit-results should error ==="
+# =============================================================
+STATE="$TEST_DIR/test7-state.yaml"
+if echo "last_scanned_pr: 100
+confirmed_fmha_prs: []" | run_script --state-file "$STATE" --full-scan commit-results 2>/dev/null; then
+    echo "  FAIL: should have rejected --full-scan with commit-results"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS: rejected --full-scan with commit-results"
+    PASS=$((PASS + 1))
+fi
+
+# =============================================================
+echo ""
+echo "=== Test 8: gh api failure handling ==="
+# =============================================================
+STATE="$TEST_DIR/test8-state.yaml"
+if GH_MOCK_FAIL=1 GH_MOCK_DATA_FILE="$TEST_DIR/mock-prs.json" \
+    GH_MOCK_GQL_FILE="$TEST_DIR/mock-gql-all-fmha.json" \
+    PATH="$MOCK_DIR:$PATH" \
+    bash "$SCRIPT" --state-file "$STATE" list-pending 2>/dev/null; then
+    echo "  FAIL: should have failed when gh api fails"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS: exits with error when gh api fails"
+    PASS=$((PASS + 1))
+fi
+
+# =============================================================
+echo ""
+echo "=== Test 9: ambiguous file-path pre-filter ==="
+# =============================================================
+# GraphQL mock: PR 101 has FMHA files, PR 104 does NOT
+cat > "$TEST_DIR/mock-gql-partial.json" << 'GQL_DATA'
+{
+  "data": {
+    "pr_101": {"pullRequest": {"number": 101, "files": {"nodes": [{"path": "ops/fmha/fwd.hpp"}, {"path": "ops/gemm/gemm.hpp"}]}}},
+    "pr_104": {"pullRequest": {"number": 104, "files": {"nodes": [{"path": "ops/gemm/pipeline.hpp"}, {"path": "CMakeLists.txt"}]}}}
+  }
+}
+GQL_DATA
+
+STATE="$TEST_DIR/test9-state.yaml"
+OUTPUT=$(GH_MOCK_DATA_FILE="$TEST_DIR/mock-prs.json" \
+    GH_MOCK_GQL_FILE="$TEST_DIR/mock-gql-partial.json" \
+    PATH="$MOCK_DIR:$PATH" \
+    bash "$SCRIPT" --state-file "$STATE" list-pending)
+
+# PR 101 has FMHA files -> should be in ambiguous
+# PR 104 has no FMHA files -> should be filtered out
+assert_eq "ambiguous count is 1 (filtered)" \
+    "1" \
+    "$(echo "$OUTPUT" | yq '.to_verify.ambiguous | length')"
+
+assert_eq "ambiguous is PR 101 (has FMHA files)" \
+    "101" \
+    "$(echo "$OUTPUT" | yq '.to_verify.ambiguous[0].number')"
+
+# obvious_fmha should be unaffected by file filter
+assert_eq "obvious_fmha still 3" \
+    "3" \
+    "$(echo "$OUTPUT" | yq '.to_verify.obvious_fmha | length')"
 
 # =============================================================
 echo ""
