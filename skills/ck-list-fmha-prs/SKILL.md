@@ -8,6 +8,7 @@ description: >
   work is in progress on the rocm-libraries repo. Also trigger when the user asks things like
   "what PRs touch the attention kernel", "show me open CK FMHA changes", "list MHA pull requests",
   "what's being worked on for flash attention in CK", "FMHA test PRs", or "FMHA CI changes".
+  Pass `--full-scan` to ignore saved state and re-scan all PRs from scratch.
 ---
 
 # List FMHA-Focused PRs in ROCm/rocm-libraries
@@ -16,59 +17,50 @@ Find and present all open pull requests in `ROCm/rocm-libraries` labeled `"proje
 
 ## Prerequisites
 
-- **`gh` CLI**: This skill requires the [GitHub CLI](https://cli.github.com/) to be installed and authenticated. All PR fetching, file listing, and diff inspection is done via `gh api`, `gh pr view`, and `gh pr diff` bash commands.
+- **`gh` CLI**: Installed and authenticated. The required commands (`gh pr view`, `gh pr diff`, `gh api repos/*/pulls?*`) must be pre-approved in settings.
+- **`jq`**: For JSON processing.
+- **`yq`** (v4+): For YAML state file I/O.
 
 ## Why this skill exists
 
 PR titles in this repo are often vague or misleading — a PR titled "enable sequence paddings for all types" might actually be adding MX FP8/FP4 support to the FMHA kernel. Titles alone are not reliable for filtering. This skill reads diffs and changed file paths to determine the real focus of each PR.
 
-## Step 1: Fetch all labeled PRs
+## How state works
 
-Use `gh api` to fetch all open PRs with the label. The GitHub REST API paginates at 100 results per page, so loop through pages until empty.
+This skill maintains a state file to avoid re-scanning PRs that have already been classified:
+
+- **State file:** `~/.claude/projects/-mnt-c-Users-poyechen-workspace-repo-rocm-libraries/fmha-pr-state.yaml`
+- **High-water mark:** The highest PR number that has been scanned. Only PRs with numbers above this are verified on subsequent runs.
+- **Confirmed list:** PRs previously verified as FMHA-focused. On each run, closed/merged PRs are automatically removed.
+- **Full reset:** Pass `--full-scan` as a skill argument to ignore saved state and re-scan everything.
+
+## Step 1: Load pending work
+
+Determine the skill directory (the directory containing this SKILL.md file). Run the companion script:
 
 ```bash
-PAGE=1
-while true; do
-  RESULT=$(gh api "repos/ROCm/rocm-libraries/pulls?state=open&per_page=100&page=$PAGE" \
-    --jq '.[] | select(.labels[]?.name == "project: composablekernel") | {number, title, user: .user.login, url: .html_url, created_at}')
-  [ -z "$RESULT" ] && break
-  echo "$RESULT"
-  PAGE=$((PAGE + 1))
-done
+bash <skill-dir>/scripts/fmha-pr-scan.sh \
+    --state-file ~/.claude/projects/-mnt-c-Users-poyechen-workspace-repo-rocm-libraries/fmha-pr-state.yaml \
+    list-pending [--full-scan]
 ```
 
-Collect all results into a list.
+Include `--full-scan` only if the user passed it as a skill argument.
 
-## Step 2: Triage PRs by title
+Parse the YAML output. It contains:
+- `max_pr_number` — highest PR number seen (used later to update the high-water mark)
+- `to_verify.obvious_fmha` — new PRs whose titles match FMHA keywords
+- `to_verify.ambiguous` — new PRs with non-matching titles
+- `confirmed_open` — previously confirmed FMHA PRs still open
 
-Split the PRs into two buckets:
+If both `to_verify.obvious_fmha` and `to_verify.ambiguous` are empty, skip to Step 3 — there are no new PRs to verify.
 
-### Obvious FMHA PRs (title match)
-If the title (case-insensitive) contains any of these patterns, it is likely FMHA-focused:
-- `fmha`
-- `attention`
-- `flash`
-- `multi-head` or `multihead`
-- `mha` (as a word boundary, not substring like "emphasis")
+## Step 2: Verify new PRs via subagents
 
-Additionally, PRs matching the above patterns **combined** with test/CI keywords are high-confidence FMHA test/CI candidates:
-- `test` + any FMHA keyword above
-- `ci` + any FMHA keyword above
-- `gtest`, `ctest`, `pytest` + any FMHA keyword above
-- `validation`, `verify`, `check` + any FMHA keyword above
-
-These still need diff verification (Step 3) but are high-confidence candidates.
-
-### Ambiguous PRs (no title match)
-All other PRs. Many of these will NOT be FMHA-related, but some will — the title just doesn't say so. This includes PRs that modify FMHA test infrastructure or CI pipelines without mentioning FMHA in the title.
-
-## Step 3: Verify via diffs using subagents
-
-For **every** PR (both buckets), verify whether FMHA is the primary focus by examining changed files and diffs. Launch subagents in parallel for efficiency.
+For **every** PR in `to_verify` (both `obvious_fmha` and `ambiguous`), verify whether FMHA is the primary focus by examining changed files and diffs. Launch subagents in parallel for efficiency.
 
 ### Subagent prompt template
 
-For each PR, spawn a Task subagent (type: `general-purpose`) with this prompt. The required `gh` commands (`gh pr view`, `gh pr diff`, `gh api repos/*/pulls?*`) must be pre-approved in the permissions allow list (either project-level `.claude/settings.json` or user-level `~/.claude/settings.json`) so that background subagents can run them without interactive approval.
+For each PR, spawn a Task subagent (type: `general-purpose`) with this prompt:
 
 ```
 Determine whether PR #<NUMBER> in ROCm/rocm-libraries is primarily focused on FMHA (fused multi-head attention) code — including kernel implementations, tests, or CI/infrastructure.
@@ -98,7 +90,7 @@ CATEGORY: Kernel|Test/CI|Both|N/A
 SUMMARY: <1-2 sentence summary or "N/A">
 ```
 
-Launch subagents in parallel (batch 6-8 at a time to avoid overwhelming the system). Use `run_in_background: true` for all of them.
+Launch subagents in parallel (batch 6-8 at a time). Use `run_in_background: true` for all of them.
 
 ### Classification rules
 
@@ -112,11 +104,6 @@ A PR is FMHA-focused if **most** of its changed files are in FMHA-related paths,
 - FMHA CMakeLists.txt or build configuration in test directories
 - Test data, fixtures, reference outputs, or validation scripts for FMHA
 
-Classify each FMHA-focused PR into a **category**:
-- **Kernel** — primarily modifies FMHA kernel/operator implementation code
-- **Test/CI** — primarily modifies FMHA tests, test infrastructure, or CI pipelines
-- **Both** — substantially modifies both kernel code and test/CI code
-
 A PR is **NOT** FMHA-focused if it only:
 - Adds a shared `#include` to an umbrella header that FMHA happens to use
 - Modifies core utilities (sequence, tuple, type traits) used across all ops
@@ -124,9 +111,35 @@ A PR is **NOT** FMHA-focused if it only:
 - Touches an FMHA file with a trivial 1-2 line change while the bulk of changes are elsewhere
 - Makes repo-wide CI changes that happen to include FMHA jobs among many others
 
+## Step 3: Commit results
+
+Merge the verified FMHA PRs from Step 2 with the `confirmed_open` PRs from Step 1. For each newly confirmed PR, include: `number`, `title`, `author`, `url`, `category`, `summary`, `created_at`.
+
+Build a YAML document with this structure and pipe it to the script:
+
+```yaml
+last_scanned_pr: <max_pr_number from Step 1>
+confirmed_fmha_prs:
+  - number: ...
+    title: "..."
+    author: ...
+    url: ...
+    category: ...
+    summary: "..."
+    created_at: "..."
+```
+
+```bash
+cat <<'EOF' | bash <skill-dir>/scripts/fmha-pr-scan.sh \
+    --state-file ~/.claude/projects/-mnt-c-Users-poyechen-workspace-repo-rocm-libraries/fmha-pr-state.yaml \
+    commit-results
+<the YAML content>
+EOF
+```
+
 ## Step 4: Present results
 
-Compile the verified FMHA PRs into a markdown table, sorted by creation date descending (newest first):
+Compile **all** confirmed FMHA PRs (both previously confirmed and newly verified) into a markdown table, sorted by creation date descending (newest first):
 
 ```markdown
 | # | PR | Author | Category | Age | Summary |
@@ -136,14 +149,14 @@ Compile the verified FMHA PRs into a markdown table, sorted by creation date des
 | 3 | ... | ... | Both | 1mo | ... |
 ```
 
-The "Category" column indicates whether the PR primarily touches **Kernel** code, **Test/CI** infrastructure, or **Both**.
+The "Age" column shows how long ago the PR was created. Use the largest fitting unit: `Xd` (days) for < 14 days, `Xw` (weeks) for < 8 weeks, `Xmo` (months) otherwise.
 
-The "Age" column shows how long ago the PR was created, computed from `created_at`. Use the largest fitting unit: `Xd` (days) for < 14 days, `Xw` (weeks) for < 8 weeks, `Xmo` (months) otherwise.
-
-After the table, add a brief "Excluded" section listing any PRs that had FMHA keywords in the title but were determined NOT to be FMHA-focused after diff inspection, with a short reason why.
+After the table, add:
+- An "Excluded" section listing any PRs from `to_verify` that had FMHA keywords in the title but were determined NOT to be FMHA-focused after diff inspection, with a short reason why.
+- A note saying how many PRs were scanned in this run vs. loaded from state, so the user knows what was incremental.
 
 ## Performance notes
 
-- There are typically 40-80 open CK-labeled PRs at any time. Of these, usually 5-15 touch FMHA code.
-- Spawning subagents in parallel keeps total wall time reasonable (~1-2 minutes for the full scan).
-- If the PR count is small enough (< 10 PRs total), you can examine diffs inline instead of using subagents.
+- With state, typical incremental runs only verify 0-5 new PRs instead of 40-80 — completing in seconds rather than minutes.
+- Use `--full-scan` periodically (e.g., weekly) to catch any PRs that may have changed scope since initial classification.
+- If the total PRs to verify is small (< 10), you can examine diffs inline instead of using subagents.
