@@ -225,3 +225,42 @@ After presenting all drafts, ask the user:
 "Want me to post these as inline comments to the PR? You can also ask me to edit or drop specific items."
 
 Use AskUserQuestion with options: "Post all", "Let me edit first", "Don't post".
+
+### Step 6: Post to GitHub (if approved)
+
+Only for PR mode. Only if user approved posting.
+
+1. Compute the exact new-file line number for each comment by parsing the diff hunks. For each item:
+   - Read the diff from `/tmp/deep-review-diff.txt`
+   - Find the hunk containing the target file and line
+   - Count non-minus lines from the hunk start to determine the new-file line number
+
+2. Build the review JSON and save to `/tmp/deep-review-post.json`:
+
+```json
+{
+  "commit_id": "{HEAD_COMMIT_SHA}",
+  "event": "COMMENT",
+  "body": "Deep review — minor suggestions, take or leave.",
+  "comments": [
+    {
+      "path": "path/to/file.hpp",
+      "line": 706,
+      "side": "RIGHT",
+      "body": "Comment text with fenced code blocks"
+    }
+  ]
+}
+```
+
+Get the HEAD commit SHA:
+```bash
+gh pr view {PR_NUMBER} --json headRefOid --jq '.headRefOid'
+```
+
+3. Post the review:
+```bash
+gh api repos/{REPO_OWNER}/{REPO_NAME}/pulls/{PR_NUMBER}/reviews --method POST --input /tmp/deep-review-post.json
+```
+
+4. Report the review URL to the user.
