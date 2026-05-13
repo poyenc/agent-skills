@@ -264,3 +264,32 @@ gh api repos/{REPO_OWNER}/{REPO_NAME}/pulls/{PR_NUMBER}/reviews --method POST --
 ```
 
 4. Report the review URL to the user.
+
+## Inline Comment Format
+
+All inline comments use normal fenced code blocks. NEVER use GitHub `suggestion` blocks — they don't work for conceptual changes like reordering.
+
+Two styles:
+
+**Direct fix** — small change the author can copy-paste:
+
+> `pin_staging_` is either overwritten or destroyed after this call,
+> so the copy's extra atomic inc/dec is unnecessary:
+> ```cpp
+> auto* heap_ref = new std::shared_ptr<void>(std::move(pin_staging_));
+> ```
+
+**Conceptual fix** — demonstrates the idea with key statements:
+
+> This memset is enqueued before `pinned_host_alloc` which could throw:
+> ```cpp
+> // current order:
+> hipMemsetAsync(...);
+> auto pin_base = pinned_host_alloc(total_bytes);  // can throw
+>
+> // suggested order:
+> auto pin_base = pinned_host_alloc(total_bytes);  // can throw
+> hipMemsetAsync(...);  // enqueued after alloc succeeds
+> ```
+
+Keep comments concise. The author should learn from the comment — explain the *why*, show the *what*.
