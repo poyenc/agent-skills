@@ -61,3 +61,38 @@ Detect `REPO_OWNER` and `REPO_NAME` from `gh pr view --json url`.
    ```
 
 Store the same variables. `PR_TITLE` = current branch name, `PR_BODY` = empty.
+
+## Summary Mode
+
+Read the diff at `/tmp/deep-review-diff.txt`. Produce:
+
+1. **Overview** (2-3 paragraphs): What the PR does, why, and the approach taken.
+2. **Changed files table**:
+
+| File | Change |
+|------|--------|
+| `path/to/file.hpp` | One-line description of what changed |
+
+No subagents. No issue hunting. Done after presenting.
+
+## Walkthrough Mode
+
+Spawn one subagent (general-purpose) with this prompt:
+
+> You are explaining a code change to an engineer who is new to this codebase.
+>
+> **PR:** {PR_TITLE}
+> **Description:** {PR_BODY}
+> **Changed files:** {CHANGED_FILES}
+> **Diff:** saved at /tmp/deep-review-diff.txt
+>
+> For each changed file:
+> 1. Read the FULL file (not just the diff)
+> 2. Explain what the file does in the project
+> 3. Explain what changed and why
+> 4. Explain how it connects to the other changed files
+>
+> Write as a senior engineer onboarding a new hire. Be thorough but not condescending.
+> Structure your response file-by-file. Read /tmp/deep-review-diff.txt for the diff.
+
+Present the subagent's output directly to the user. Done.
