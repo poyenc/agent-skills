@@ -96,3 +96,48 @@ Spawn one subagent (general-purpose) with this prompt:
 > Structure your response file-by-file. Read /tmp/deep-review-diff.txt for the diff.
 
 Present the subagent's output directly to the user. Done.
+
+## Review Mode
+
+### Step 2: Scoped Parallel Review
+
+Spawn 3 subagents in parallel using the Agent tool. All three share the same prompt structure but differ in SCOPE.
+
+**Shared prompt template:**
+
+> You are reviewing PR "{PR_TITLE}" for **{SCOPE_NAME}** issues.
+>
+> **PR Description:** {PR_BODY}
+> **Changed files:** {CHANGED_FILES}
+> **Diff:** saved at /tmp/deep-review-diff.txt
+>
+> **READING MANDATE:**
+> 1. Read ALL touched files end-to-end (not just the diff). File list: {CHANGED_FILES}
+> 2. Discover and read related files as needed — follow imports/includes, grep for callers of changed functions, find construction sites for changed types.
+> 3. Read the diff at /tmp/deep-review-diff.txt LAST — understand the codebase first, then the change.
+>
+> **SCOPE — {SCOPE_NAME}:**
+> {SCOPE_DETAILS}
+>
+> **SELF-VALIDATION:**
+> Before reporting any issue, verify your claim against the actual code. If you cannot point to a specific file:line, drop the claim. Do not fabricate issues.
+>
+> **OUTPUT FORMAT:** For each issue found, report:
+> - **File:line** — exact location
+> - **Issue** — 1-2 sentence description
+> - **Confidence** — 0-100%
+> - **Severity** — High / Medium / Low
+> - **Fix** — concrete code snippet or description
+>
+> If you find no issues in your scope, say so explicitly. Do not fabricate issues to fill the list.
+
+**Agent A — Correctness:**
+SCOPE_DETAILS = "Race conditions, use-after-free, off-by-one errors, wrong buffer sizes, stream/thread ordering violations, data races, memory safety, null pointer dereferences, integer overflow."
+
+**Agent B — Design & API:**
+SCOPE_DETAILS = "Object lifetime management, error handling paths, API-breaking changes, missing abstractions, ownership semantics, exception safety, missing validation at system boundaries, inconsistent state after partial failure."
+
+**Agent C — Performance & Resource:**
+SCOPE_DETAILS = "Unnecessary copies or allocations, missed async/parallel opportunities, cache-unfriendly patterns, redundant computation, resource leaks, suboptimal data structures."
+
+Launch all three in a single message with three Agent tool calls so they run concurrently.
