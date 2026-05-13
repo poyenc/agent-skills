@@ -166,3 +166,62 @@ After all 3 scoped agents return, collect their findings into a combined list. T
 > 3. Find NEW issues the prior reviewers missed. Use the same output format (file:line, issue, confidence, severity, fix).
 >
 > Report your verdicts first, then any new issues.
+
+### Step 4: Consolidation
+
+After the validation agent returns:
+
+1. **Apply verdicts:** Drop items marked "Wrong". For "Overstated" items, adjust the severity/description per the validator's feedback.
+2. **Merge new issues:** Add any new issues the validator found to the list.
+3. **Deduplicate:** If multiple agents reported the same issue (same file:line, same root cause), merge them into one item. Use the highest confidence and most detailed description.
+4. **Sort:** By severity (High > Medium > Low), then by confidence (highest first).
+5. **Number sequentially:** Starting from #1.
+
+### Step 5: Present Results
+
+Present in two separate sections. Do NOT interleave explanations with comment drafts.
+
+**Section A: Issue Analysis**
+
+First, show the summary table:
+
+```
+| # | Severity | Confidence | Issue | Location | Action |
+|---|----------|-----------|-------|----------|--------|
+```
+
+Then, for each item, show the detailed explanation:
+
+```
+### #N (Severity, Confidence%) — Short title
+
+📍 `file/path.hpp:123` — [View in PR](https://github.com/{REPO_OWNER}/{REPO_NAME}/pull/{PR_NUMBER}/files#diff-{SHA256}R{LINE})
+
+2-3 sentence explanation with reasoning.
+```
+
+Compute the GitHub diff anchor via Bash:
+```bash
+echo -n "path/to/file.hpp" | sha256sum | cut -c1-64
+```
+
+**Section B: Inline Comment Drafts**
+
+For each item, show the draft comment:
+
+```
+**#N** — on `file/path.hpp:123`:
+​```cpp
+the code line this comment attaches to
+​```
+
+> Comment text here with code block showing the fix:
+> ​```cpp
+> fixed code here
+> ​```
+```
+
+After presenting all drafts, ask the user:
+"Want me to post these as inline comments to the PR? You can also ask me to edit or drop specific items."
+
+Use AskUserQuestion with options: "Post all", "Let me edit first", "Don't post".
