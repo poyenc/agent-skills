@@ -72,12 +72,20 @@ re-spawn QA to re-verify. Do not proceed to benchmark until QA passes.
 
 **How to spawn:**
 
+Before spawning, read the `MEMORY.md` index and identify entries
+relevant to the issue (matching file paths, API names, hardware
+features, or error patterns). Read those memory files and include their
+content in the prompt as a Prior Knowledge section.
+
 ```
 Agent({
   description: "Debug: <issue summary>",
   subagent_type: "general-purpose",
   model: "<model from On-Demand Models config, or 'opus'>",
   prompt: "<content of roles/debugger.md with placeholders filled>\n\n" +
+          "## Prior Knowledge\n<relevant memory entries — codebase " +
+          "patterns, hardware behavior, known pitfalls that relate " +
+          "to the issue area>\n\n" +
           "## Escalation Report\n<implementer's report>\n\n" +
           "## Source Files\n<relevant file paths>\n\n" +
           "## Commands\nBuild: <build command>\nTest: <test command>\n\n" +
@@ -304,8 +312,8 @@ Paths resolved from config:
 ```
 
 Only you (the Lead) write to status.md and knowledge.md. Members
-produce results in their output files. After a keep/revert decision,
-promote verified findings to knowledge.md.
+produce results in their output files and report discoveries in their
+structured output (see Knowledge Discovery below).
 
 Members read workflows.md for build/test/bench commands (injected in
 their prompt via {{WORKFLOWS}}).
@@ -322,6 +330,77 @@ their prompt via {{WORKFLOWS}}).
 ```
 
 You maintain status.md and knowledge.md directly.
+
+## Knowledge Management
+
+### Knowledge Categories
+
+Knowledge entries in knowledge.md are classified as:
+
+- **codebase-pattern** — API semantics, usage constraints, template
+  metaprogramming pitfalls (e.g., "sweep_tile causes compiler to hold
+  AGPR+VGPR simultaneously", "buffer_load requires cross-thread data
+  contiguity")
+- **hardware-behavior** — ISA-specific behavior not obvious from
+  documentation, verified through experimentation (e.g., "gfx950 LDS
+  64-bank conflict rules", "MFMA OPSEL only effective when kCols>=4")
+- **compiler-behavior** — Compiler code generation patterns tied to
+  specific toolchain versions (e.g., "clang 22.0.0 inline asm register
+  tuple validation for v_mfma_scale_f32")
+- **debug-pattern** — Reusable debugging insights and root cause
+  patterns (e.g., "M0 addressing errors in async LDS loads indicate
+  BaseElementOffset miscalculation")
+- **experiment-data** — Benchmark results, measurements, config-specific
+  performance numbers. NOT synced to memory — stays in knowledge.md only.
+
+### Knowledge Entry Template
+
+```markdown
+## Entry: <title>
+
+**Category**: codebase-pattern / hardware-behavior /
+             compiler-behavior / debug-pattern / experiment-data
+**Environment**: GPU=<target>, Compiler=<version>,
+               ROCm=<version> (only when relevant to the finding)
+**Verified by**: task #<N>, test: <test name>, code: <file:line>
+**Verified count**: <N> times across <M> scenarios
+**Status**: draft → verified → synced
+
+<content — what was discovered, why it matters, how to apply it>
+```
+
+### Verification Requirements
+
+A knowledge entry reaches **verified** status when ALL of:
+1. Confirmed in ≥2 independent scenarios (different configs, sizes, or
+   code paths)
+2. Has traceable evidence (task ID, test case, code location, or
+   assembly excerpt)
+3. Lead has reviewed the entry for accuracy and generality
+
+### Knowledge Sync to Memory
+
+When an entry reaches **verified** status — and its category is NOT
+`experiment-data` — immediately sync it to the project's Claude Code
+memory system:
+
+1. Write a memory file following the project's memory format (frontmatter
+   with name, description, type)
+2. Add an index entry to `MEMORY.md`
+3. Mark the knowledge entry status as **synced**
+
+This ensures reusable knowledge (codebase patterns, hardware behavior,
+compiler behavior, debug patterns) is available to all future sessions
+and teams — not locked inside a single team's knowledge.md.
+
+### Knowledge Discovery (Member Reports)
+
+Members (Implementer, Profiler) include a **Discoveries** section in
+their structured output when they encounter reusable knowledge during
+their work. The Lead evaluates each discovery:
+- If novel and potentially reusable → add as **draft** to knowledge.md
+- If already known → skip
+- If contradicts existing knowledge → investigate before updating
 
 ## Evaluation Criteria
 

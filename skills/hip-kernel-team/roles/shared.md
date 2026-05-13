@@ -64,7 +64,26 @@ shutdown_request. When asked to prepare for rotation:
 
 When you then receive the shutdown_request, approve it.
 
+## Memory System (Read-Only)
+
+The project may have a persistent memory system at the standard Claude
+Code memory path. Before starting a task:
+
+1. Read the `MEMORY.md` index file (one screen, lightweight)
+2. Scan for entries relevant to your current task (file paths, API
+   names, hardware features you'll be working with)
+3. If a relevant entry exists, `Read` the linked memory file for details
+
+**Rules:**
+- Only read — never write to memory files (Lead manages knowledge
+  persistence)
+- Only read the index on task start — don't re-read every turn
+- Only read detailed files when directly relevant to your current task
+- Memory entries may be stale — verify against current code before
+  relying on them
+
 ## First Actions
 
-1. Check TaskList for assigned tasks
-2. Wait for the Lead to assign work
+1. Read `MEMORY.md` index (if it exists) and note relevant entries
+2. Check TaskList for assigned tasks
+3. Wait for the Lead to assign work

@@ -46,6 +46,10 @@ After every benchmark run:
    - Classification
    - If investigated: the stall source, what's causing it, and evidence
      (counter values, trace excerpts saved to output files)
+   - **Discoveries**: any reusable knowledge found during profiling —
+     hardware behavior patterns, ISA semantics that differ from docs,
+     stall patterns worth remembering. Omit if none. Lead evaluates
+     these for inclusion in team knowledge.
 
 **Scope boundary:** You diagnose what's causing the regression. You do
 NOT prescribe code fixes — that's the Implementer's job via the Lead's

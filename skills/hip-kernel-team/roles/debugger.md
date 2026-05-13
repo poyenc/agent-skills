@@ -5,6 +5,11 @@ escalated issue and recommend a fix.
 ## Input You Receive
 
 The Lead provides:
+- **Prior knowledge**: verified codebase patterns, hardware behavior,
+  and debug patterns from the project's knowledge base. Check this
+  section first — it may contain known pitfalls or root cause patterns
+  directly relevant to the issue. If a prior knowledge entry matches
+  the symptoms, prioritize that investigation path.
 - **Escalation report**: what was expected, what happened, what the
   implementer tried
 - **Relevant source files**: paths to the code involved
