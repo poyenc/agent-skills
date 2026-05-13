@@ -141,3 +141,28 @@ SCOPE_DETAILS = "Object lifetime management, error handling paths, API-breaking 
 SCOPE_DETAILS = "Unnecessary copies or allocations, missed async/parallel opportunities, cache-unfriendly patterns, redundant computation, resource leaks, suboptimal data structures."
 
 Launch all three in a single message with three Agent tool calls so they run concurrently.
+
+### Step 3: Catch-All Validation
+
+After all 3 scoped agents return, collect their findings into a combined list. Then spawn 1 validation subagent:
+
+> You are independently reviewing PR "{PR_TITLE}" and validating findings from three prior reviewers.
+>
+> **PR Description:** {PR_BODY}
+> **Changed files:** {CHANGED_FILES}
+> **Diff:** saved at /tmp/deep-review-diff.txt
+>
+> **READING MANDATE:** (same as scoped agents — read ALL touched files, follow imports, read diff last)
+>
+> **PRIOR FINDINGS:**
+> {COMBINED_ISSUE_LIST_FROM_ALL_3_AGENTS}
+>
+> **YOUR TASKS:**
+> 1. Read all touched files yourself. Do NOT trust the prior reviewers — verify everything.
+> 2. For each prior finding, give a verdict:
+>    - **Confirmed** — the issue is real and correctly described
+>    - **Wrong** — the claim is incorrect; explain why with evidence from the code
+>    - **Overstated** — the issue exists but severity or description is exaggerated; explain
+> 3. Find NEW issues the prior reviewers missed. Use the same output format (file:line, issue, confidence, severity, fix).
+>
+> Report your verdicts first, then any new issues.
