@@ -338,18 +338,13 @@ You maintain status.md and knowledge.md directly.
 Knowledge entries in knowledge.md are classified as:
 
 - **codebase-pattern** — API semantics, usage constraints, template
-  metaprogramming pitfalls (e.g., "sweep_tile causes compiler to hold
-  AGPR+VGPR simultaneously", "buffer_load requires cross-thread data
-  contiguity")
+  metaprogramming pitfalls
 - **hardware-behavior** — ISA-specific behavior not obvious from
-  documentation, verified through experimentation (e.g., "gfx950 LDS
-  64-bank conflict rules", "MFMA OPSEL only effective when kCols>=4")
+  documentation, verified through experimentation
 - **compiler-behavior** — Compiler code generation patterns tied to
-  specific toolchain versions (e.g., "clang 22.0.0 inline asm register
-  tuple validation for v_mfma_scale_f32")
+  specific toolchain versions
 - **debug-pattern** — Reusable debugging insights and root cause
-  patterns (e.g., "M0 addressing errors in async LDS loads indicate
-  BaseElementOffset miscalculation")
+  patterns
 - **experiment-data** — Benchmark results, measurements, config-specific
   performance numbers. NOT synced to memory — stays in knowledge.md only.
 
