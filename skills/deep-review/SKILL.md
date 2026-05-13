@@ -4,7 +4,7 @@ description: >
   Use when the user wants a thorough code review of a PR or local branch changes.
   Goes beyond diff-based review by reading all touched files and related code.
   Supports three modes: summary (quick overview), walkthrough (file-by-file
-  explanation for onboarding), and review (3+1 subagent issue-hunting pipeline).
+  explanation for onboarding), and review (2+1 subagent issue-hunting pipeline).
   Trigger on: "deep review", "thorough review", "review PR thoroughly",
   "explain this PR", "walk me through this PR", "what does this PR do",
   "find issues in PR", or "/deep-review".
@@ -20,7 +20,7 @@ Parse the skill arguments to extract:
 - `PR_NUMBER`: numeric PR number (optional — if absent, review local branch diff)
 - `--summary`: brief summary mode
 - `--walkthrough`: annotated file-by-file explanation mode
-- `--review`: full 3+1 pass issue hunting mode
+- `--review`: full 2+1 pass issue hunting mode
 
 If no mode flag is given, ask the user via AskUserQuestion:
 - Summary — quick overview of what changed
@@ -46,6 +46,12 @@ Run these in parallel via Bash:
 Store: `PR_TITLE`, `PR_BODY`, `CHANGED_FILES` (list of file paths), `BASE_BRANCH`, `HEAD_BRANCH`, `REPO_OWNER`, `REPO_NAME`.
 
 Detect `REPO_OWNER` and `REPO_NAME` from `gh pr view --json url`.
+
+3. Split the diff into per-file chunks for targeted agent prompts:
+   ```bash
+   csplit -z -f /tmp/deep-review-chunk- /tmp/deep-review-diff.txt '/^diff --git/' '{*}'
+   ```
+   Build a map of `{file_path: chunk_file}` from the first line of each chunk.
 
 ### Local Mode (no PR number)
 
@@ -101,7 +107,7 @@ Present the subagent's output directly to the user. Done.
 
 ### Step 2: Scoped Parallel Review
 
-Spawn 3 subagents in parallel using the Agent tool. All three share the same prompt structure but differ in SCOPE.
+Spawn 2 subagents in parallel using the Agent tool. Both share the same prompt structure but differ in SCOPE.
 
 **Shared prompt template:**
 
@@ -109,12 +115,15 @@ Spawn 3 subagents in parallel using the Agent tool. All three share the same pro
 >
 > **PR Description:** {PR_BODY}
 > **Changed files:** {CHANGED_FILES}
-> **Diff:** saved at /tmp/deep-review-diff.txt
 >
-> **READING MANDATE:**
-> 1. Read ALL touched files end-to-end (not just the diff). File list: {CHANGED_FILES}
-> 2. Discover and read related files as needed — follow imports/includes, grep for callers of changed functions, find construction sites for changed types.
-> 3. Read the diff at /tmp/deep-review-diff.txt LAST — understand the codebase first, then the change.
+> **READING STRATEGY (follow this order):**
+> 1. Read the diff chunks FIRST. Each chunk is a separate file listed below — read them all to understand what changed.
+> 2. For hunks that look suspicious in your scope, read surrounding context in the source file using offset/limit (~50 lines around the target area). Do NOT read entire files end-to-end.
+> 3. Follow imports or grep for callers ONLY when needed to verify a specific concern you already identified from the diff — not speculatively.
+> 4. Budget: aim for ≤15 tool calls total. If you've read 3+ full files without finding issues, stop exploring and report.
+>
+> **Diff chunks (read all of these):**
+> {LIST_OF_CHUNK_FILES_WITH_CORRESPONDING_SOURCE_PATHS}
 >
 > **SCOPE — {SCOPE_NAME}:**
 > {SCOPE_DETAILS}
@@ -131,39 +140,38 @@ Spawn 3 subagents in parallel using the Agent tool. All three share the same pro
 >
 > If you find no issues in your scope, say so explicitly. Do not fabricate issues to fill the list.
 
-**Agent A — Correctness:**
-SCOPE_DETAILS = "Race conditions, use-after-free, off-by-one errors, wrong buffer sizes, stream/thread ordering violations, data races, memory safety, null pointer dereferences, integer overflow."
+**Agent A — Correctness & Design:**
+SCOPE_DETAILS = "Race conditions, use-after-free, off-by-one errors, wrong buffer sizes, stream/thread ordering violations, data races, memory safety, null pointer dereferences, integer overflow, object lifetime management, error handling paths, API-breaking changes, ownership semantics, exception safety, missing validation at system boundaries, inconsistent state after partial failure."
 
-**Agent B — Design & API:**
-SCOPE_DETAILS = "Object lifetime management, error handling paths, API-breaking changes, missing abstractions, ownership semantics, exception safety, missing validation at system boundaries, inconsistent state after partial failure."
-
-**Agent C — Performance & Resource:**
+**Agent B — Performance & Resource:**
 SCOPE_DETAILS = "Unnecessary copies or allocations, missed async/parallel opportunities, cache-unfriendly patterns, redundant computation, resource leaks, suboptimal data structures."
 
-Launch all three in a single message with three Agent tool calls so they run concurrently.
+Launch both in a single message with two Agent tool calls so they run concurrently.
 
 ### Step 3: Catch-All Validation
 
-After all 3 scoped agents return, collect their findings into a combined list. Then spawn 1 validation subagent:
+After both scoped agents return, collect their findings into a combined list. Then spawn 1 validation subagent:
 
-> You are independently reviewing PR "{PR_TITLE}" and validating findings from three prior reviewers.
+> You are validating findings from two prior reviewers of PR "{PR_TITLE}".
 >
 > **PR Description:** {PR_BODY}
-> **Changed files:** {CHANGED_FILES}
-> **Diff:** saved at /tmp/deep-review-diff.txt
->
-> **READING MANDATE:** (same as scoped agents — read ALL touched files, follow imports, read diff last)
 >
 > **PRIOR FINDINGS:**
 > {COMBINED_ISSUE_LIST_FROM_ALL_3_AGENTS}
 >
+> **READING STRATEGY (targeted verification):**
+> 1. For each prior finding, read ONLY the cited file region (use offset/limit, ~50 lines around the reported line). Verify the claim against the actual code.
+> 2. If a finding references interactions between files, read the relevant regions in both files — not the entire files.
+> 3. Read additional context (imports, callers) ONLY when needed to confirm or refute a specific finding.
+> 4. After verifying all findings, do ONE quick scan of the diff chunks to check for obvious issues the prior reviewers missed. Diff chunks: {LIST_OF_CHUNK_FILES_WITH_CORRESPONDING_SOURCE_PATHS}
+> 5. Budget: aim for ≤15 tool calls total.
+>
 > **YOUR TASKS:**
-> 1. Read all touched files yourself. Do NOT trust the prior reviewers — verify everything.
-> 2. For each prior finding, give a verdict:
+> 1. For each prior finding, give a verdict:
 >    - **Confirmed** — the issue is real and correctly described
 >    - **Wrong** — the claim is incorrect; explain why with evidence from the code
 >    - **Overstated** — the issue exists but severity or description is exaggerated; explain
-> 3. Find NEW issues the prior reviewers missed. Use the same output format (file:line, issue, confidence, severity, fix).
+> 2. Find NEW issues the prior reviewers missed (from your diff scan in step 4). Use the same output format (file:line, issue, confidence, severity, fix).
 >
 > Report your verdicts first, then any new issues.
 
