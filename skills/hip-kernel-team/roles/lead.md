@@ -72,20 +72,12 @@ re-spawn QA to re-verify. Do not proceed to benchmark until QA passes.
 
 **How to spawn:**
 
-Before spawning, read the `MEMORY.md` index and identify entries
-relevant to the issue (matching file paths, API names, hardware
-features, or error patterns). Read those memory files and include their
-content in the prompt as a Prior Knowledge section.
-
 ```
 Agent({
   description: "Debug: <issue summary>",
   subagent_type: "general-purpose",
   model: "<model from On-Demand Models config, or 'opus'>",
   prompt: "<content of roles/debugger.md with placeholders filled>\n\n" +
-          "## Prior Knowledge\n<relevant memory entries — codebase " +
-          "patterns, hardware behavior, known pitfalls that relate " +
-          "to the issue area>\n\n" +
           "## Escalation Report\n<implementer's report>\n\n" +
           "## Source Files\n<relevant file paths>\n\n" +
           "## Commands\nBuild: <build command>\nTest: <test command>\n\n" +
@@ -368,20 +360,39 @@ Knowledge entries in knowledge.md are classified as:
 
 A knowledge entry reaches **verified** status when ALL of:
 1. Confirmed in ≥2 independent scenarios (different configs, sizes, or
-   code paths)
+   code paths). For findings where independent confirmation is
+   infeasible (e.g., single-GPU errata, ISA semantics on one target),
+   Lead may promote to verified with a note explaining why.
 2. Has traceable evidence (task ID, test case, code location, or
    assembly excerpt)
 3. Lead has reviewed the entry for accuracy and generality
 
 ### Knowledge Sync to Memory
 
-When an entry reaches **verified** status — and its category is NOT
-`experiment-data` — immediately sync it to the project's Claude Code
-memory system:
+> Skip this section if sync_to_memory is false in team config.
 
-1. Write a memory file following the project's memory format (frontmatter
-   with name, description, type)
-2. Add an index entry to `MEMORY.md`
+When an entry reaches **verified** status — and its category is NOT
+`experiment-data` — sync it to the project's Claude Code memory system
+before moving to the next pipeline phase:
+
+1. Write a memory file using this format:
+
+   ```markdown
+   ---
+   name: <entry title>
+   description: <category> — <one-line summary>
+   type: project
+   ---
+
+   **Category**: <category>
+   **Environment**: <environment, if applicable>
+   **Source**: knowledge.md from team <team-name>, verified by task #<N>
+
+   <content from knowledge entry>
+   ```
+
+2. Add an index entry to the project's `MEMORY.md` (path from team
+   config's Memory section)
 3. Mark the knowledge entry status as **synced**
 
 This ensures reusable knowledge (codebase patterns, hardware behavior,

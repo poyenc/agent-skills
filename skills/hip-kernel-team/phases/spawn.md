@@ -56,6 +56,8 @@ Fill placeholders in each template with values from config:
 | `{{OUTPUT_DIR}}` | `/tmp/<team-name>/<member-name>/` |
 | `{{EVALUATION_CRITERIA}}` | Config Evaluation Criteria section |
 | `{{TEAM_NAME}}` | Team name |
+| `{{KNOWLEDGE_PATH}}` | Recall path or `.claude/teams/<name>/knowledge.md` |
+| `{{MEMORY_PATH}}` | Memory directory path from config (only when `sync_to_memory` is true) |
 
 ## 8. Spawn member agents
 
