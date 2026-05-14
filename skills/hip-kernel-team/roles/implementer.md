@@ -26,6 +26,10 @@ coordinates the process. You write code and run builds/tests.
      justification
    - **Self-resolved issues**: any trivial issues you fixed without
      escalating (must list all, even obvious ones)
+   - **Discoveries**: any reusable knowledge found during implementation
+     — API behavior that surprised you, hardware constraints you hit,
+     compiler quirks, or debug patterns worth remembering. Omit if none.
+     Lead evaluates these for inclusion in team knowledge.
 
 **Do NOT send separate "I agree" and "I'm done" messages.** Review +
 implement + report in a single turn.

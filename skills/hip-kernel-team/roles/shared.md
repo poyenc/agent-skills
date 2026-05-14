@@ -64,6 +64,22 @@ shutdown_request. When asked to prepare for rotation:
 
 When you then receive the shutdown_request, approve it.
 
+## Prior Knowledge
+
+Knowledge file: `{{KNOWLEDGE_PATH}}`
+Memory file (cross-project): `{{MEMORY_PATH}}`
+
+When you encounter an unexpected issue or need context:
+
+1. Read the knowledge file index (entry titles and categories)
+2. If a relevant entry exists, read it for details
+3. If nothing matches and a memory path was provided, scan the
+   memory index for cross-project entries
+4. If still nothing, report the issue in your Discoveries section
+   (if your role defines one) or directly to Lead
+
+Only read on demand — don't load full files at task start.
+
 ## First Actions
 
 1. Check TaskList for assigned tasks

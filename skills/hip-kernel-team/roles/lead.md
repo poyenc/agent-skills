@@ -304,8 +304,8 @@ Paths resolved from config:
 ```
 
 Only you (the Lead) write to status.md and knowledge.md. Members
-produce results in their output files. After a keep/revert decision,
-promote verified findings to knowledge.md.
+produce results in their output files and report discoveries in their
+structured output (see Knowledge Discovery below).
 
 Members read workflows.md for build/test/bench commands (injected in
 their prompt via {{WORKFLOWS}}).
@@ -322,6 +322,91 @@ their prompt via {{WORKFLOWS}}).
 ```
 
 You maintain status.md and knowledge.md directly.
+
+## Knowledge Management
+
+### Knowledge Categories
+
+Knowledge entries in knowledge.md are classified as:
+
+- **codebase-pattern** — API semantics, usage constraints, template
+  metaprogramming pitfalls
+- **hardware-behavior** — ISA-specific behavior not obvious from
+  documentation, verified through experimentation
+- **compiler-behavior** — Compiler code generation patterns tied to
+  specific toolchain versions
+- **debug-pattern** — Reusable debugging insights and root cause
+  patterns
+- **experiment-data** — Benchmark results, measurements, config-specific
+  performance numbers. NOT synced to memory — stays in knowledge.md only.
+
+### Knowledge Entry Template
+
+```markdown
+## Entry: <title>
+
+**Category**: codebase-pattern / hardware-behavior /
+             compiler-behavior / debug-pattern / experiment-data
+**Environment**: GPU=<target>, Compiler=<version>,
+               ROCm=<version> (only when relevant to the finding)
+**Verified by**: task #<N>, test: <test name>, code: <file:line>
+**Verified count**: <N> times across <M> scenarios
+**Status**: draft → verified → synced
+
+<content — what was discovered, why it matters, how to apply it>
+```
+
+### Verification Requirements
+
+A knowledge entry reaches **verified** status when ALL of:
+1. Confirmed in ≥2 independent scenarios (different configs, sizes, or
+   code paths). For findings where independent confirmation is
+   infeasible (e.g., single-GPU errata, ISA semantics on one target),
+   Lead may promote to verified with a note explaining why.
+2. Has traceable evidence (task ID, test case, code location, or
+   assembly excerpt)
+3. Lead has reviewed the entry for accuracy and generality
+
+### Knowledge Sync to Memory
+
+> Skip this section if sync_to_memory is false in team config.
+
+When an entry reaches **verified** status — and its category is NOT
+`experiment-data` — sync it to the project's Claude Code memory system
+before moving to the next pipeline phase:
+
+1. Write a memory file using this format:
+
+   ```markdown
+   ---
+   name: <entry title>
+   description: <category> — <one-line summary>
+   type: project
+   ---
+
+   **Category**: <category>
+   **Environment**: <environment, if applicable>
+   **Source**: knowledge.md from team <team-name>, verified by task #<N>
+
+   <content from knowledge entry>
+   ```
+
+2. Add an index entry to the project's `MEMORY.md` (path from team
+   config's Memory section)
+3. Mark the knowledge entry status as **synced**
+
+This ensures reusable knowledge (codebase patterns, hardware behavior,
+compiler behavior, debug patterns) is available to all future sessions
+and teams — not locked inside a single team's knowledge.md.
+
+### Knowledge Discovery (Member Reports)
+
+Members (Implementer, Profiler) include a **Discoveries** section in
+their structured output when they encounter reusable knowledge during
+their work. The Lead evaluates each discovery:
+- If novel and potentially reusable → add as **draft** to knowledge.md
+- If already known → skip
+- If contradicts existing knowledge → investigate before updating
 
 ## Evaluation Criteria
 

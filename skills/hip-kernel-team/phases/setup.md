@@ -69,19 +69,30 @@ ls ~/.local/share/claude/recall/ 2>/dev/null
 - **Not found**: "No recall plugin detected. I'll use project-local files
   at `.claude/teams/<name>/` for status tracking."
 
-## Step 5: Key Files
+## Step 5: Memory Sync
+
+Ask: "Sync verified knowledge to Claude Code memory for cross-project
+reuse? (Recommended if not using recall)" Default: yes.
+
+- Write `sync_to_memory: true/false` to config
+- If true: verify memory directory exists, create + initialize
+  `MEMORY.md` if needed
+- If true: resolve and store the memory path in config for injection
+  as `{{MEMORY_PATH}}` in member spawn prompts
+
+## Step 6: Key Files
 
 Ask: "Any key reference files the team should know about? (source files,
 reference implementations, or 'none — team will discover')"
 
-## Step 6: Workflows
+## Step 7: Workflows
 
 Ask: "Build/test/bench commands? (or 'team will figure out')"
 
 If recall is present and a workflows.md exists for the detected task,
 offer to auto-populate: "Found existing workflows in recall. Use those?"
 
-## Step 6b: Model Selection
+## Step 8: Model Selection
 
 Ask: "Model preference for each member? (default: all inherit from
 parent session, or specify per-role — e.g., 'profiler: sonnet')"
@@ -91,13 +102,13 @@ Debugger=opus, Researcher=opus)"
 
 If user says "default" or skips, use the defaults above.
 
-## Step 7: Team Name & Confirmation
+## Step 9: Team Name & Confirmation
 
 Generate a short kebab-case team name from the goal (e.g.,
 `ck-fmha-v3-opt`). Print a full summary of the config. Ask user to
 confirm.
 
-## Step 8: Save & Spawn
+## Step 10: Save & Spawn
 
 1. Save config to `.claude/teams/<team-name>/config.md`
    (see [Config Format](#config-format) below)
@@ -155,6 +166,10 @@ created: <YYYY-MM-DD>
 - Project: <name>
 - Branch: <branch>
 - Task: <task>
+
+## Memory
+
+- sync_to_memory: true/false
 
 ## Key Files
 
