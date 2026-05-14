@@ -1,28 +1,29 @@
 #!/bin/bash
-# ck-ci-build.sh - Trigger Jenkins CI builds for Composable Kernel PRs
+# ck-ci-build.sh - Trigger Jenkins CI builds for Composable Kernel PRs or branches
 #
 # Uses curl for status checks + playwright-cli for triggering builds.
 # No extra auth — curl uses Kerberos, playwright reuses your browser session.
 #
 # Usage:
 #   ./ck-ci-build.sh -pr <PR_NUMBER> [-option KEY=VALUE]... [-dry-run] [-list-params]
+#   ./ck-ci-build.sh -branch <BRANCH_NAME> [-option KEY=VALUE]... [-dry-run] [-list-params]
 #
 # Examples:
 #   ./ck-ci-build.sh -pr 6498
+#   ./ck-ci-build.sh -branch ck/user/feature
 #   ./ck-ci-build.sh -pr 6498 -option RUN_CK_TILE_FMHA_TESTS=ON
-#   ./ck-ci-build.sh -pr 6498 -option RUN_CK_TILE_FMHA_TESTS=ON -option RUN_AITER_TESTS=ON
+#   ./ck-ci-build.sh -branch ck/user/feature -option RUN_CK_TILE_FMHA_TESTS=ON
 #   ./ck-ci-build.sh -pr 6498 -dry-run
 #   ./ck-ci-build.sh -pr 6498 -list-params
 #   ./ck-ci-build.sh -pr 6498 -no-saved          # ignore saved settings, use defaults
 #
 # Parameter persistence:
 #   When you trigger a build with -option flags, those settings are saved to
-#   ~/.claude/ck-ci-build/saved-params-PR-<N>.conf. Next time you run without -option,
+#   ~/.claude/ck-ci-build/saved-params-<ID>.conf. Next time you run without -option,
 #   the saved settings are loaded automatically. Use -no-saved to ignore them.
 
 set -euo pipefail
 
-BASE_URL="http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job"
 CURL="curl -sfg --negotiate -u :"
 SESSION="ck-ci"
 PW="playwright-cli -s=${SESSION}"
@@ -38,6 +39,7 @@ if [ -f "${CONFIG_FILE}" ]; then
 fi
 
 PR=""
+BRANCH=""
 DRY_RUN=false
 LIST_PARAMS=false
 NO_SAVED=false
@@ -48,10 +50,12 @@ declare -a OPTION_VALS=()
 # ---------- Parse arguments ----------
 usage() {
     cat <<EOF
-Usage: $0 -pr <PR_NUMBER> [-option KEY=VALUE]... [-dry-run] [-list-params]
+Usage: $0 (-pr <PR_NUMBER> | -branch <BRANCH_NAME>) [-option KEY=VALUE]... [-dry-run] [-list-params]
 
 Options:
-  -pr <N>              PR number (required)
+  -pr <N>              PR number (e.g. 6498)
+  -branch <name>       Branch name (e.g. ck/user/feature)
+                       Exactly one of -pr or -branch is required
   -option KEY=VALUE    Override a build parameter (repeatable)
                        Booleans: ON/true/1 or OFF/false/0
   -dry-run             Show what would happen without triggering
@@ -68,6 +72,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -pr)
             PR="${2:?Error: -pr requires a PR number}"
+            shift 2
+            ;;
+        -branch)
+            BRANCH="${2:?Error: -branch requires a branch name}"
             shift 2
             ;;
         -option)
@@ -109,13 +117,28 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ -z "${PR}" ]; then
-    echo "Error: -pr is required" >&2
+if [ -z "${PR}" ] && [ -z "${BRANCH}" ]; then
+    echo "Error: -pr or -branch is required" >&2
+    usage
+fi
+if [ -n "${PR}" ] && [ -n "${BRANCH}" ]; then
+    echo "Error: -pr and -branch are mutually exclusive" >&2
     usage
 fi
 
-JOB_URL="${BASE_URL}/PR-${PR}"
-SAVED_FILE="${SAVED_DIR}/saved-params-PR-${PR}.conf"
+if [ -n "${PR}" ]; then
+    JOB_NAME="PR-${PR}"
+    LABEL="PR #${PR}"
+    FILE_ID="PR-${PR}"
+else
+    JOB_NAME=$(echo "${BRANCH}" | sed 's|/|%2F|g')
+    LABEL="Branch: ${BRANCH}"
+    FILE_ID=$(echo "${BRANCH}" | sed 's|/|__|g')
+fi
+
+URL_ENCODED_JOB=$(echo "${JOB_NAME}" | sed 's|%2F|%252F|g')
+JOB_URL="http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/job/${URL_ENCODED_JOB}"
+SAVED_FILE="${SAVED_DIR}/saved-params-${FILE_ID}.conf"
 
 # ---------- Load saved parameters ----------
 if [ "${HAS_EXPLICIT_OPTIONS}" = false ] && [ "${NO_SAVED}" = false ] && [ -f "${SAVED_FILE}" ]; then
@@ -139,11 +162,11 @@ fi
 # Phase 1: curl — status checks (fast, no browser)
 # ============================================================
 
-echo "Checking PR-${PR}..." >&2
+echo "Checking ${LABEL}..." >&2
 JOB_JSON=$(${CURL} "${JOB_URL}/api/json?tree=lastBuild[number,result,building,timestamp],property[parameterDefinitions[name,type,defaultParameterValue[value],description,choices]]" 2>/dev/null || echo "")
 
 if [ -z "${JOB_JSON}" ]; then
-    echo "Error: Could not reach Jenkins job for PR-${PR}." >&2
+    echo "Error: Could not reach Jenkins job for ${LABEL}." >&2
     echo "  Check that the PR exists and you have Kerberos auth (kinit)." >&2
     exit 1
 fi
@@ -173,11 +196,11 @@ echo "  Last build: ${LAST_BUILD_NUM:-none} (${LAST_BUILD_RESULT:-n/a})" >&2
 # ---------- List parameters (curl-only, exit early) ----------
 if [ "${LIST_PARAMS}" = true ]; then
     if [ "${HAS_BUILDS}" = "no" ]; then
-        echo "PR-${PR} has no prior builds. Parameters not available until after the first build." >&2
+        echo "${LABEL} has no prior builds. Parameters not available until after the first build." >&2
         exit 0
     fi
     echo ""
-    echo "Available parameters for PR-${PR}:"
+    echo "Available parameters for ${LABEL}:"
     echo "-----------------------------------"
     echo "${JOB_JSON}" | python3 -c "
 import json, sys
@@ -223,14 +246,14 @@ fi
 echo "" >&2
 if [ "${HAS_BUILDS}" = "no" ]; then
     echo "=== First Build (Build Now) ===" >&2
-    echo "  PR: #${PR}" >&2
+    echo "  ${LABEL}" >&2
     if [ ${#OPTION_KEYS[@]} -gt 0 ]; then
         echo "  Note: First build has no parameter form. -option flags ignored." >&2
         echo "        Re-run with -option after this build completes." >&2
     fi
 else
     echo "=== Build with Parameters ===" >&2
-    echo "  PR: #${PR}" >&2
+    echo "  ${LABEL}" >&2
     if [ ${#OPTION_KEYS[@]} -gt 0 ]; then
         echo "  Overrides:" >&2
         for i in "${!OPTION_KEYS[@]}"; do
@@ -332,13 +355,13 @@ fi
 sleep 2
 echo "" >&2
 echo "Build triggered successfully!" >&2
-echo "View at: http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job/PR-${PR}/" >&2
+echo "View at: ${JOB_URL}/" >&2
 
 # ---------- Save parameters for next run ----------
 if [ ${#OPTION_KEYS[@]} -gt 0 ] && [ "${HAS_EXPLICIT_OPTIONS}" = true ]; then
     mkdir -p "${SAVED_DIR}"
     {
-        echo "# Saved parameters for PR-${PR} ($(date '+%Y-%m-%d %H:%M'))"
+        echo "# Saved parameters for ${LABEL} ($(date '+%Y-%m-%d %H:%M'))"
         for i in "${!OPTION_KEYS[@]}"; do
             echo "${OPTION_KEYS[$i]}=${OPTION_VALS[$i]}"
         done

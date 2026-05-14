@@ -1,43 +1,61 @@
 #!/bin/bash
-# ci-report.sh - Analyze Jenkins CI build failures for Composable Kernel PRs
-# Usage: ci-report.sh <PR_NUMBER> [BUILD_SELECTOR]
-#   PR_NUMBER: the PR number (e.g. 6983)
+# ci-report.sh - Analyze Jenkins CI build failures for Composable Kernel PRs/branches
+# Usage: ci-report.sh <PR_NUMBER_OR_BRANCH> [BUILD_SELECTOR]
+#   PR_NUMBER_OR_BRANCH: PR number (e.g. 6983) or branch name (e.g. ck/user/feature)
 #   BUILD_SELECTOR: "lastBuild" (default), "lastFailedBuild", or a build number like "4"
 #
-# Output: prints a markdown report to stdout, saves stage log to /tmp/ci-stage-log-<N>.txt
+# Output: prints a markdown report to stdout, saves stage log to /tmp/ci-stage-log-<ID>.txt
 #
 # Uses Blue Ocean REST API for structured stage/step/log data instead of parsing
 # the full consoleText. The consoleText is downloaded in background as a saved artifact only.
 
 set -euo pipefail
 
-PR="${1:?Usage: ci-report.sh <PR_NUMBER> [BUILD_SELECTOR]}"
+INPUT="${1:?Usage: ci-report.sh <PR_NUMBER_OR_BRANCH> [BUILD_SELECTOR]}"
 BUILD="${2:-lastBuild}"
-BASE="http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job/PR-${PR}"
-CURL="curl -sf --negotiate -u :"
-CONSOLE="/tmp/ci-console-PR-${PR}.txt"
-REPORT="/tmp/ci-report-PR-${PR}.md"
-STAGE_LOG="/tmp/ci-stage-log-${PR}.txt"
-STAGE_ERRORS="/tmp/ci-stage-errors-${PR}.txt"
+CURL="curl -sfg --negotiate -u :"
+
+if [[ "${INPUT}" =~ ^[0-9]+$ ]]; then
+    MODE="pr"
+    PR="${INPUT}"
+    JOB_NAME="PR-${PR}"
+    BO_BRANCH="PR-${PR}"
+    LABEL="PR #${PR}"
+    FILE_ID="PR-${PR}"
+else
+    MODE="branch"
+    BRANCH="${INPUT}"
+    JOB_NAME=$(echo "${BRANCH}" | sed 's|/|%2F|g')
+    BO_BRANCH="${JOB_NAME}"
+    LABEL="Branch: ${BRANCH}"
+    FILE_ID=$(echo "${BRANCH}" | sed 's|/|__|g')
+fi
+
+URL_ENCODED_JOB=$(echo "${JOB_NAME}" | sed 's|%2F|%252F|g')
+BASE="http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/job/${URL_ENCODED_JOB}"
+CONSOLE="/tmp/ci-console-${FILE_ID}.txt"
+REPORT="/tmp/ci-report-${FILE_ID}.md"
+STAGE_LOG="/tmp/ci-stage-log-${FILE_ID}.txt"
+STAGE_ERRORS="/tmp/ci-stage-errors-${FILE_ID}.txt"
 
 # ---------- 1. Get build metadata ----------
-echo "Fetching PR-${PR} build ${BUILD}..." >&2
+echo "Fetching ${LABEL} build ${BUILD}..." >&2
 BUILD_JSON=$(${CURL} "${BASE}/${BUILD}/api/json?tree=number,result,timestamp" 2>/dev/null || echo "")
 
 if [ -z "${BUILD_JSON}" ]; then
     echo "No builds found." >&2
     {
-        echo "## CI Report: PR #${PR}"
+        echo "## CI Report: ${LABEL}"
         echo "**Result:** NO BUILDS"
         echo ""
-        echo "No CI builds found for this PR. The build may not have been triggered yet."
+        echo "No CI builds found. The build may not have been triggered yet."
     } > "${REPORT}"
     echo "Report saved to: ${REPORT}" >&2
     cat "${REPORT}"
     exit 0
 fi
 
-BUILD_VARS="/tmp/ci-build-vars-${PR}.sh"
+BUILD_VARS="/tmp/ci-build-vars-${FILE_ID}.sh"
 python3 - "${BUILD_JSON}" "${BUILD_VARS}" <<'PYEOF'
 import json, sys, datetime
 d = json.loads(sys.argv[1])
@@ -55,8 +73,9 @@ echo "Build #${BUILD_NUM} (${BUILD_RESULT:-in progress})." >&2
 # ---------- 2. Handle IN PROGRESS ----------
 if [ -z "${BUILD_RESULT}" ]; then
     # Build is still running — gather stage progress from Blue Ocean API
-    BO_BASE="http://micimaster.amd.com/blue/rest/organizations/jenkins/pipelines/rocm-libraries-folder/pipelines/Composable%20Kernel/branches/PR-${PR}/runs/${BUILD_NUM}"
-    BO_NODES_RAW="/tmp/ci-nodes-${PR}.json"
+    BO_URL_BRANCH=$(echo "${BO_BRANCH}" | sed 's|%2F|%252F|g')
+    BO_BASE="http://micimaster.amd.com/blue/rest/organizations/jenkins/pipelines/rocm-libraries-folder/pipelines/Composable%20Kernel/branches/${BO_URL_BRANCH}/runs/${BUILD_NUM}"
+    BO_NODES_RAW="/tmp/ci-nodes-${FILE_ID}.json"
     ${CURL} "${BO_BASE}/nodes/?limit=200" > "${BO_NODES_RAW}" 2>/dev/null || echo "[]" > "${BO_NODES_RAW}"
 
     PROGRESS=$(python3 - "${BO_NODES_RAW}" <<'PYEOF'
@@ -78,7 +97,7 @@ PYEOF
     eval "${PROGRESS}"
 
     {
-        echo "## CI Report: PR #${PR} (Build #${BUILD_NUM})"
+        echo "## CI Report: ${LABEL} (Build #${BUILD_NUM})"
         echo "**Result:** IN PROGRESS"
         echo "**Build at:** ${BUILD_TIMESTAMP}"
         echo ""
@@ -97,7 +116,7 @@ fi
 # ---------- 2b. Handle SUCCESS ----------
 if [ "${BUILD_RESULT}" = "SUCCESS" ]; then
     {
-        echo "## CI Report: PR #${PR} (Build #${BUILD_NUM})"
+        echo "## CI Report: ${LABEL} (Build #${BUILD_NUM})"
         echo "**Result:** SUCCESS"
         echo "**Build at:** ${BUILD_TIMESTAMP}"
         echo ""
@@ -109,14 +128,15 @@ if [ "${BUILD_RESULT}" = "SUCCESS" ]; then
 fi
 
 # ---------- 3. Get stage info from Blue Ocean API ----------
-BO_BASE="http://micimaster.amd.com/blue/rest/organizations/jenkins/pipelines/rocm-libraries-folder/pipelines/Composable%20Kernel/branches/PR-${PR}/runs/${BUILD_NUM}"
+BO_URL_BRANCH=$(echo "${BO_BRANCH}" | sed 's|%2F|%252F|g')
+BO_BASE="http://micimaster.amd.com/blue/rest/organizations/jenkins/pipelines/rocm-libraries-folder/pipelines/Composable%20Kernel/branches/${BO_URL_BRANCH}/runs/${BUILD_NUM}"
 
 echo "Fetching stage info..." >&2
-BO_NODES_RAW="/tmp/ci-nodes-${PR}.json"
+BO_NODES_RAW="/tmp/ci-nodes-${FILE_ID}.json"
 ${CURL} "${BO_BASE}/nodes/?limit=200" > "${BO_NODES_RAW}" 2>/dev/null || echo "[]" > "${BO_NODES_RAW}"
 
 # Parse nodes: get failed stage, skipped stages
-NODES_VARS="/tmp/ci-nodes-vars-${PR}.sh"
+NODES_VARS="/tmp/ci-nodes-vars-${FILE_ID}.sh"
 python3 - "${BO_NODES_RAW}" "${NODES_VARS}" <<'PYEOF'
 import json, sys
 
@@ -159,10 +179,10 @@ IS_INFRA=false
 if [ -n "${FAILED_NODE_ID}" ]; then
     echo "Failed stage: ${FAILING_STAGE} (node ${FAILED_NODE_ID})" >&2
 
-    BO_STEPS_RAW="/tmp/ci-steps-${PR}.json"
+    BO_STEPS_RAW="/tmp/ci-steps-${FILE_ID}.json"
     ${CURL} "${BO_BASE}/nodes/${FAILED_NODE_ID}/steps/?limit=200" > "${BO_STEPS_RAW}" 2>/dev/null || echo "[]" > "${BO_STEPS_RAW}"
 
-    STEPS_VARS="/tmp/ci-steps-vars-${PR}.sh"
+    STEPS_VARS="/tmp/ci-steps-vars-${FILE_ID}.sh"
     python3 - "${BO_STEPS_RAW}" "${STEPS_VARS}" <<'PYEOF'
 import json, sys
 
@@ -215,7 +235,7 @@ fi
 
 # ---------- 6. Generate report ----------
 {
-    echo "## CI Report: PR #${PR} (Build #${BUILD_NUM})"
+    echo "## CI Report: ${LABEL} (Build #${BUILD_NUM})"
     echo "**Failed stage:** ${FAILING_STAGE}"
 
     if [ "${IS_INFRA}" = true ]; then

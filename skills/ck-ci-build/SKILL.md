@@ -1,11 +1,11 @@
 ---
 name: ck-ci-build
-description: Trigger Jenkins CI builds for Composable Kernel pull requests with optional parameter overrides. Use this skill whenever the user wants to trigger a CI build, start a build, kick off CI, rebuild, re-run CI, or launch a Jenkins build for a CK or Composable Kernel PR. Also trigger when the user asks to set CI build parameters, enable/disable specific tests (like FMHA, AITER, FA, pytorch), or wants to check what CI parameters are available for a PR.
+description: Trigger Jenkins CI builds for Composable Kernel pull requests or branches with optional parameter overrides. Use this skill whenever the user wants to trigger a CI build, start a build, kick off CI, rebuild, re-run CI, or launch a Jenkins build for a CK or Composable Kernel PR or branch. Also trigger when the user asks to set CI build parameters, enable/disable specific tests (like FMHA, AITER, FA, pytorch), or wants to check what CI parameters are available for a PR or branch.
 ---
 
 # Trigger CK CI Builds
 
-Trigger Jenkins CI builds for Composable Kernel PRs and optionally override build parameters (test toggles, compiler settings, etc.).
+Trigger Jenkins CI builds for Composable Kernel PRs or branches and optionally override build parameters (test toggles, compiler settings, etc.).
 
 ## Prerequisites
 
@@ -46,14 +46,19 @@ echo "BROWSER=<value>" > ~/.claude/ck-ci-build/config
 
 To override the browser for a single run, pass `-browser <name>` to the script (ephemeral, does not update config).
 
-## Step 2: Get the PR number
+## Step 2: Get the PR number or branch name
 
-If the user hasn't provided a PR number, **ask for it** using AskUserQuestion. The PR number
-is the GitHub PR number (e.g., 6498 from `ROCm/rocm-libraries/pull/6498`).
+The user can provide either:
+- A **PR number** (e.g., `6498` from `ROCm/rocm-libraries/pull/6498`)
+- A **branch name** (e.g., `ck/user/feature-name`)
 
 The user may also provide a full Jenkins URL like:
-`http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job/PR-6498/`
-Extract the PR number from the URL.
+- PR: `http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job/PR-6498/`
+- Branch: `http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/job/ck%252Fuser%252Ffeature/`
+
+Extract the PR number or branch name from the URL. For branch URLs, decode `%252F` → `/`.
+
+If neither is provided, ask the user what they want to build.
 
 ## Step 3: List available parameters and let the user choose
 
@@ -62,6 +67,8 @@ available. This lets the user decide which toggles to change before triggering.
 
 ```bash
 bash <skill-dir>/scripts/ci-build.sh -pr <PR_NUMBER> -list-params
+# or
+bash <skill-dir>/scripts/ci-build.sh -branch <BRANCH_NAME> -list-params
 ```
 
 Present the parameter list to the user and ask which ones they want to override (if any).
@@ -71,11 +78,13 @@ If the user already specified options in their request, skip the question and pr
 ## Step 4: Run the script
 
 ```bash
-bash <skill-dir>/scripts/ci-build.sh -pr <PR_NUMBER> [-option KEY=VALUE]... [-dry-run] [-list-params]
+bash <skill-dir>/scripts/ci-build.sh (-pr <PR_NUMBER> | -branch <BRANCH_NAME>) [-option KEY=VALUE]... [-dry-run] [-list-params]
 ```
 
 Arguments:
-- `-pr <N>` (required): The PR number
+- `-pr <N>`: The PR number
+- `-branch <name>`: The branch name (e.g., `ck/user/feature`)
+- Exactly one of `-pr` or `-branch` is required
 - `-option KEY=VALUE` (repeatable): Override a build parameter. Booleans accept ON/OFF/true/false/1/0
 - `-dry-run`: Show what would happen without actually triggering
 - `-list-params`: List all available build parameters with defaults and exit
@@ -120,7 +129,10 @@ If the script fails, check common issues:
 
 ## Notes
 
-- The Jenkins base URL is: `http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/view/change-requests/job/PR-<N>/`
+- Jenkins URL patterns:
+  - PR: `http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/job/PR-<N>/`
+  - Branch: `http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/job/<encoded-branch>/`
+  - Branch names have `/` encoded as `%2F`, then double-encoded in URLs as `%252F`
 - First builds use the "Build Now" button (no parameters available in Jenkins UI)
 - Subsequent builds use "Build with Parameters" with all options exposed
 - The persistent browser profile is managed by `playwright-cli` (session `ck-ci`)
