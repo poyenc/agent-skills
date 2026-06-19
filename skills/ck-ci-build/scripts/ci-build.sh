@@ -38,6 +38,31 @@ if [ -f "${CONFIG_FILE}" ]; then
     [ -n "${_cfg_browser}" ] && BROWSER="${_cfg_browser}"
 fi
 
+# Resolve the user's actual browser profile path (avoids blank persistent session)
+# Reads "profile.last_used" from the browser's Local State JSON — always up to date.
+_get_profile_path() {
+    local browser="$1"
+    local user_data=""
+    case "${browser}" in
+        msedge) user_data=$(cmd.exe /c "echo %LOCALAPPDATA%" 2>/dev/null | tr -d '\r\n')/Microsoft/Edge/User\ Data ;;
+        chrome)  user_data=$(cmd.exe /c "echo %LOCALAPPDATA%" 2>/dev/null | tr -d '\r\n')/Google/Chrome/User\ Data ;;
+        *)       echo ""; return ;;
+    esac
+    # Convert Windows path to Unix path if cygpath is available
+    user_data=$(cygpath -u "${user_data}" 2>/dev/null || echo "${user_data}")
+    local local_state="${user_data}/Local State"
+    if [ ! -f "${local_state}" ]; then echo ""; return; fi
+    local profile_name
+    profile_name=$(python3 -c "
+import json
+d = json.load(open(r'${local_state}'))
+print(d.get('profile', {}).get('last_used', 'Default'))
+" 2>/dev/null) || { echo ""; return; }
+    echo "${user_data}/${profile_name}"
+}
+
+PROFILE_PATH=$(_get_profile_path "${BROWSER}")
+
 PR=""
 BRANCH=""
 DRY_RUN=false
@@ -281,7 +306,11 @@ trap cleanup EXIT
 
 echo "" >&2
 echo "Opening browser..." >&2
-${PW} open "${JOB_URL}/" --browser=${BROWSER} --persistent > /dev/null 2>&1
+if [ -n "${PROFILE_PATH}" ]; then
+    ${PW} open "${JOB_URL}/" --browser=${BROWSER} --profile="${PROFILE_PATH}" > /dev/null 2>&1
+else
+    ${PW} open "${JOB_URL}/" --browser=${BROWSER} --persistent > /dev/null 2>&1
+fi
 
 # Check for login redirect
 PAGE_URL=$(${PW} --raw eval "location.href")

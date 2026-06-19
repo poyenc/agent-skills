@@ -109,7 +109,7 @@ The script operates in two phases:
 - Exits early for `-dry-run`
 
 **Phase 2 — playwright-cli (browser automation):**
-- Opens the configured browser with a persistent profile (SSO session is reused)
+- Opens the configured browser reusing your existing profile (SSO session carried over automatically; falls back to a blank persistent profile for unsupported browsers like Firefox)
 - Detects whether the page shows "Build Now" (first build) or "Build with Parameters"
 - Applies parameter overrides by manipulating the Jenkins form DOM
 - Clicks the Build button to trigger
@@ -125,7 +125,7 @@ After the script runs, tell the user:
 If the script fails, check common issues:
 - **Kerberos auth**: User may need to run `kinit`
 - **PR not found**: Double-check the PR number
-- **Login required**: On first run, the browser may need manual login — this is a one-time setup since the profile is persistent
+- **Login required**: The script reuses your existing Edge/Chrome profile so login is automatic. If it still hits a login page, your browser session may have expired — log in once manually and subsequent runs will be seamless
 
 ## Notes
 
@@ -135,7 +135,7 @@ If the script fails, check common issues:
   - Branch names have `/` encoded as `%2F`, then double-encoded in URLs as `%252F`
 - First builds use the "Build Now" button (no parameters available in Jenkins UI)
 - Subsequent builds use "Build with Parameters" with all options exposed
-- The persistent browser profile is managed by `playwright-cli` (session `ck-ci`)
+- The browser session is managed by `playwright-cli` (session `ck-ci`), reusing your existing Edge/Chrome profile for automatic SSO
 - Saved build parameters and browser preference are stored in `~/.claude/ck-ci-build/`
 - Use `-browser <name>` to override the browser for a single run
 - Use the companion `ck-ci-report` skill to check build results after triggering
