@@ -11,13 +11,24 @@ A plain summary captures *state* -- WHAT was done and WHAT's next -- but drops t
 
 ## Where to save
 
-Save one self-contained file to the OS temp dir with consistent naming so it's findable: `${TMPDIR:-/tmp}/handoff-<short-kebab-topic>.md` (e.g. `handoff-auth-refactor.md`). Keep everything in this one file -- don't split content into separate files, which the next agent tends to skip.
+Save one self-contained file to the OS temp dir with consistent naming so it's findable: `${TMPDIR:-/tmp}/handoff-<short-kebab-topic>.md` (e.g. `handoff-auth-refactor.md`). Keep everything in this one file -- don't split content into separate files, which the next agent tends to skip. Reuse the same filename per topic: if one already exists, overwrite it (see below) rather than creating `-v2`.
+
+## Regenerating over a prior handoff
+
+If a same-topic handoff already exists, you're chaining sessions. Read that file first if it isn't already in this conversation -- never overwrite content you haven't seen. Then regenerate from scratch and **replace**, don't accumulate: a naive re-scan folds the prior handoff back in verbatim, so each cycle inherits the last and the file ratchets up. Carry forward only what's still true and still serves the *remaining* work.
+
+- **Carry forward:** active rules/constraints, still-open decisions, still-relevant gotchas, in-flight work, and the workflow to resume if one is still in use.
+- **Drop or collapse:** completed tasks (one line, or gone once irrelevant), decisions settled and unlikely to be reopened, dead ends that later decisions have foreclosed, a workflow no longer in use, and references to finished work. Re-audit the prior handoff's reference list too -- drop any path the remaining work no longer needs, so the next session's startup fan-out doesn't grow every cycle.
+
+By default, collapse every completed task to a single line and delete the how-we-got-here narrative -- the sequence of edits made, the diagnostic steps taken, the play-by-play of the session. The next agent needs the *current* rules, decisions, and open work, not the story of how they were reached. Expand a completed item beyond one line only when the remaining work genuinely depends on that detail.
+
+When unsure, keep active rules and dead ends (a line or two each -- cheap to keep, expensive to relearn) but cut completed-and-settled state, which is the bulky part. If a settled decision's *rationale* still constrains open work, keep the rationale as a rule and drop the decision narrative around it.
 
 ## Pass 1 -- State (WHAT)
 
 - **Objective** -- the goal in 1-2 sentences, and what "done" looks like.
 - **Task list** -- done / in progress / not started. If a plan, todo list, PRD, or issue already tracks this, link it instead of copying.
-- **State & references** -- key files (paths), branch, build/test/run commands, and external artifacts (PRs, docs, dashboards) by path or URL. Don't paste diffs or file contents the next agent can read directly.
+- **State & references** -- key files (paths), branch, build/test/run commands, and external artifacts (PRs, docs, dashboards) by path or URL. Don't paste diffs or file contents the next agent can read directly. Since the next session reads every referenced file at startup, list only what the *remaining* work needs -- not everything touched this session -- to keep that fan-out bounded.
 
 ## Pass 2 -- The HOW (what summaries lose)
 
