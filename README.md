@@ -17,6 +17,7 @@ A collection of Claude Code agent skills for specialized tasks.
 | **[monorepo-bridge](skills/monorepo-bridge/SKILL.md)** | Bidirectional commit transfer between monorepos and standalone submodule repos. CLI tool with setup, split, export, sync, reset, and verify subcommands. Uses fetch + subtree merge for export, rebase for sync. Auto-detects config from existing remotes. |
 | **[p4-config](skills/p4-config/SKILL.md)** | Manage Perforce server configurations — switch between P4 servers, download files from depot paths, and create new server configs. Stores settings in `.p4config.<name>` files. |
 | **[handoff](skills/handoff/SKILL.md)** | Compact the current conversation into a single self-contained handoff document so a fresh agent can resume the work. Captures not just what's next but the operating rules, decisions, workflow, and dead ends, then emits a copy-paste kickoff prompt for the next session. |
+| **[context-watchdog](skills/context-watchdog/SKILL.md)** | Monitor Claude Code agent context usage across tmux panes. Scans all Claude panes in the current tmux window and reports their context percentage. Supports one-shot scan and recurring cron monitor modes. |
 
 ## Usage
 
