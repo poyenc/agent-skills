@@ -51,6 +51,11 @@ tmux list-panes -F '#{pane_id} #{pane_title} #{pane_current_command}'
 Keep only lines where the third field is `claude`. These are the panes
 to scan. Do not scan other windows or sessions.
 
+Note: this detects Claude Code launched directly. If Claude is running inside
+a wrapper (Node, Electron, or a shell script), `pane_current_command` may show
+the wrapper name instead. Use the one-shot mode to verify detection works in
+your environment before starting the monitor.
+
 If no Claude panes found, print:
 
 ```
@@ -77,6 +82,8 @@ If the pattern does not match for any pane, stop and ask the user:
 
 Store the custom pattern the user provides and retry all failed panes
 with it. Any pane still failing after the custom pattern shows `?%`.
+
+(This interactive fallback applies to one-shot mode only. In cron mode, follow the embedded cron prompt's step 3 instead.)
 
 ### 4. Print summary table
 
@@ -122,6 +129,7 @@ Context watchdog started.
   Cron ID  : <id>
 
 Run `/context-watchdog stop` to cancel.
+Note: cron jobs expire after 7 days — re-run `/context-watchdog start` to renew.
 ```
 
 Never use `sleep` or background Bash loops. Only `CronCreate`.
@@ -157,6 +165,7 @@ Run the following context scan procedure:
        %207   Implementer        54%
        %12    Implementer        45%
        %21    main               10%
+   (replace with actual pane IDs, titles, and percentages from the scan)
    Rules:
    - Always show the pane ID (unambiguous identity)
    - Truncate title to 16 characters if longer
@@ -166,7 +175,7 @@ Run the following context scan procedure:
 ## Stop Mode — stop
 
 1. If a cron ID is available in context (from the `start` output), use it.
-2. Otherwise ask: "What is the cron job ID? (Run `CronList` to find it.)"
+2. Otherwise: run `CronList` to find the active cron job ID, then use it.
 3. Call `CronDelete` with that ID.
 4. Confirm:
 
