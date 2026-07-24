@@ -146,7 +146,8 @@ Run the following context scan procedure:
      tmux capture-pane -p -t <pane_id> -S -8
    Search the output (case-insensitive) for the regex pattern: context:\s*(\d+)%
    Extract the integer match as the context percentage for that pane.
-   If the pattern does not match, mark that pane as "?%".
+   If the pattern does not match, mark that pane as "?%" and add a note
+   in the output: "(run /context-watchdog with no args to diagnose parse failures)"
 
 4. Get the current timestamp with: date +%H:%M
    Get the window ID with: tmux display-message -p '#{window_id}'
