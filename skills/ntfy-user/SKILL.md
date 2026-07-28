@@ -37,6 +37,7 @@ Configure via `~/.claude/settings.json`:
 | `NTFY_TITLE` | `Agent needs input` | Notification title. Keep it consistent so you can set a filter on it. |
 | `NTFY_PRIORITY` | `default` | ntfy priority: `min`, `low`, `default`, `high`, `urgent` |
 | `NTFY_URL` | `https://ntfy.sh` | Base URL. Override for self-hosted ntfy instances. |
+| `NTFY_TOKEN` | _(unset)_ | Bearer token for authenticated topics. Leave unset for public topics. |
 
 Subscribe to your topic via the ntfy service (app or web UI).
 
@@ -47,12 +48,9 @@ TOPIC="${NTFY_TOPIC:-agent-notify-topic}"
 TITLE="${NTFY_TITLE:-Agent needs input}"
 PRIORITY="${NTFY_PRIORITY:-default}"
 BASE_URL="${NTFY_URL:-https://ntfy.sh}"
-curl -s \
-  -H "Title: ${TITLE}" \
-  -H "Priority: ${PRIORITY}" \
-  -H "Tags: bell" \
-  -d "YOUR_QUESTION_HERE" \
-  "${BASE_URL}/${TOPIC}"
+CURL_ARGS=(-s -H "Title: ${TITLE}" -H "Priority: ${PRIORITY}" -H "Tags: bell")
+[ -n "${NTFY_TOKEN}" ] && CURL_ARGS+=(-H "Authorization: Bearer ${NTFY_TOKEN}")
+curl "${CURL_ARGS[@]}" -d "YOUR_QUESTION_HERE" "${BASE_URL}/${TOPIC}"
 ```
 
 ## Message content
