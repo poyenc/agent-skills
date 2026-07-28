@@ -19,6 +19,7 @@ A collection of Claude Code agent skills for specialized tasks.
 | **[handoff](skills/handoff/SKILL.md)** | Compact the current conversation into a single self-contained handoff document so a fresh agent can resume the work. Captures not just what's next but the operating rules, decisions, workflow, and dead ends, then emits a copy-paste kickoff prompt for the next session. |
 | **[context-watchdog](skills/context-watchdog/SKILL.md)** | Monitor Claude Code agent context usage across tmux panes. Scans all Claude panes in the current tmux window and reports their context percentage. Supports one-shot scan and recurring cron monitor modes. |
 | **[rotate](skills/rotate/SKILL.md)** | Hot-swap a running teammate while the session stays live. The main agent requests a rotation brief from the outgoing agent, stops it, and spawns a fresh replacement that resumes the task exactly where it left off. |
+| **[ntfy-user](skills/ntfy-user/SKILL.md)** | Send an ntfy.sh push notification to the user's phone when their input is needed before work can continue. Invoke before asking any question in a long-running or AFK session. Configure your private topic via `NTFY_TOPIC` env var. |
 
 ## Usage
 
