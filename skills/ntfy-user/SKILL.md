@@ -44,14 +44,12 @@ Subscribe to your topic via the ntfy service (app or web UI).
 Then send the notification before asking your question:
 
 ```bash
-TOPIC="${NTFY_TOPIC:-agent-notify-topic}"
-TITLE="${NTFY_TITLE:-Agent needs input}"
-PRIORITY="${NTFY_PRIORITY:-default}"
-BASE_URL="${NTFY_URL:-https://ntfy.sh}"
-CURL_ARGS=(-s -H "Title: ${TITLE}" -H "Priority: ${PRIORITY}" -H "Tags: bell")
-[ -n "${NTFY_TOKEN}" ] && CURL_ARGS+=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-curl "${CURL_ARGS[@]}" -d "YOUR_QUESTION_HERE" "${BASE_URL}/${TOPIC}"
+bash "<skill_base_dir>/ntfy.sh" "YOUR_QUESTION_HERE"
 ```
+
+Replace `<skill_base_dir>` with the base directory shown at the top of this skill when it was loaded.
+
+The script (`ntfy.sh`) reads all `NTFY_*` env vars and handles the curl invocation.
 
 ## Message content
 
