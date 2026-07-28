@@ -44,7 +44,7 @@ Subscribe to your topic via the ntfy service (app or web UI).
 Then send the notification before asking your question:
 
 ```bash
-bash "<skill_base_dir>/ntfy.sh" "YOUR_QUESTION_HERE"
+bash "<skill_base_dir>/scripts/ntfy.sh" "YOUR_QUESTION_HERE"
 ```
 
 Replace `<skill_base_dir>` with the base directory shown at the top of this skill when it was loaded.
