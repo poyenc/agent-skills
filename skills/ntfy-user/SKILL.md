@@ -1,27 +1,20 @@
 ---
 name: ntfy-user
 description: >
-  Send an ntfy.sh push notification to the user's phone when you are blocked on information only
-  the user can provide and cannot continue without it. Use this skill immediately before asking
-  the user a question in any long-running or AFK session — so the notification reaches them while
-  they are away. Only invoke after you have already exhausted what you can find autonomously
-  (code, docs, search, tests). Do NOT use for progress updates, task-complete summaries, or
-  decisions you can reasonably make yourself.
+  Send an ntfy.sh push notification to the user's phone when you need to ask them a question.
+  Use this skill immediately before asking the user anything in a long-running or AFK session —
+  so the notification reaches them while they are away. Do NOT use for progress updates or
+  task-complete summaries.
 ---
 
 ## When to invoke
 
-Invoke only when all three are true:
-
-1. You need specific information to continue — a fact or constraint only the user knows
-   (e.g. intended behavior, missing credential, business rule, ambiguous requirement).
-2. You cannot find it autonomously — you have already checked the code, docs, tests, and git history.
-3. You are about to ask the user — this notification is the side-channel ping that accompanies that question.
+Invoke whenever you are about to ask the user a question — any question that requires their input
+to continue. This is the side-channel ping that accompanies that question.
 
 **Do NOT invoke for:**
-- Decisions you can make with reasonable judgment and then report
 - Progress updates or task-complete summaries
-- Risky action approvals — those go through the permission system, not this skill
+- Anything that does not involve asking the user a question
 
 ## How to send
 
