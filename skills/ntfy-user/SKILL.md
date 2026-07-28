@@ -18,30 +18,45 @@ to continue. This is the side-channel ping that accompanies that question.
 
 ## How to send
 
-Set your private topic in `~/.claude/settings.json`:
+Configure via `~/.claude/settings.json`:
 
 ```json
-{ "env": { "NTFY_TOPIC": "your-private-topic-name" } }
+{
+  "env": {
+    "NTFY_TOPIC": "your-private-topic-name",
+    "NTFY_TITLE": "Claude needs input",
+    "NTFY_PRIORITY": "high",
+    "NTFY_URL": "https://ntfy.sh"
+  }
+}
 ```
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `NTFY_TOPIC` | `agent-notify-topic` | **Required.** The placeholder is public — set your own private topic. |
+| `NTFY_TITLE` | `Claude needs input` | Notification title. Keep it consistent so you can set a filter on it. |
+| `NTFY_PRIORITY` | `high` | ntfy priority: `min`, `low`, `default`, `high`, `urgent` |
+| `NTFY_URL` | `https://ntfy.sh` | Base URL. Override for self-hosted ntfy instances. |
+
+Subscribe to your topic via the ntfy service (app or web UI).
 
 Then send the notification before asking your question:
 
 ```bash
 TOPIC="${NTFY_TOPIC:-agent-notify-topic}"
+TITLE="${NTFY_TITLE:-Claude needs input}"
+PRIORITY="${NTFY_PRIORITY:-high}"
+BASE_URL="${NTFY_URL:-https://ntfy.sh}"
 curl -s \
-  -H "Title: Claude needs input" \
-  -H "Priority: high" \
+  -H "Title: ${TITLE}" \
+  -H "Priority: ${PRIORITY}" \
   -H "Tags: bell" \
   -d "YOUR_QUESTION_HERE" \
-  "https://ntfy.sh/${TOPIC}"
+  "${BASE_URL}/${TOPIC}"
 ```
-
-The placeholder topic `agent-notify-topic` is **public** — set `NTFY_TOPIC` to your own private
-topic before using this skill. Subscribe to that topic via the ntfy service (app or web UI).
 
 ## Message content
 
-- **Title:** Always `Claude needs input` — consistent so the user can set a notification filter on it
 - **Body:** One sentence, the actual question with enough context to answer without switching back.
   - Good: `What should the fallback behavior be when the config file is missing — error out or use defaults?`
   - Bad: `I need your help with something.`
