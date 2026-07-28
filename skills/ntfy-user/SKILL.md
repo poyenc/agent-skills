@@ -25,7 +25,7 @@ Configure via `~/.claude/settings.json`:
   "env": {
     "NTFY_TOPIC": "your-private-topic-name",
     "NTFY_TITLE": "Claude needs input",
-    "NTFY_PRIORITY": "high",
+    "NTFY_PRIORITY": "default",
     "NTFY_URL": "https://ntfy.sh"
   }
 }
@@ -35,7 +35,7 @@ Configure via `~/.claude/settings.json`:
 |----------|---------|-------|
 | `NTFY_TOPIC` | `agent-notify-topic` | **Required.** The placeholder is public — set your own private topic. |
 | `NTFY_TITLE` | `Claude needs input` | Notification title. Keep it consistent so you can set a filter on it. |
-| `NTFY_PRIORITY` | `high` | ntfy priority: `min`, `low`, `default`, `high`, `urgent` |
+| `NTFY_PRIORITY` | `default` | ntfy priority: `min`, `low`, `default`, `default`, `urgent` |
 | `NTFY_URL` | `https://ntfy.sh` | Base URL. Override for self-hosted ntfy instances. |
 
 Subscribe to your topic via the ntfy service (app or web UI).
@@ -45,7 +45,7 @@ Then send the notification before asking your question:
 ```bash
 TOPIC="${NTFY_TOPIC:-agent-notify-topic}"
 TITLE="${NTFY_TITLE:-Claude needs input}"
-PRIORITY="${NTFY_PRIORITY:-high}"
+PRIORITY="${NTFY_PRIORITY:-default}"
 BASE_URL="${NTFY_URL:-https://ntfy.sh}"
 curl -s \
   -H "Title: ${TITLE}" \
