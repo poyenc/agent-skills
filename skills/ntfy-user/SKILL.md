@@ -1,7 +1,7 @@
 ---
 name: ntfy-user
 description: >
-  Send an ntfy.sh push notification to the user's phone when you need to ask them a question.
+  Send an ntfy.sh notification to the user when you need to ask them a question.
   Use this skill immediately before asking the user anything in a long-running or AFK session —
   so the notification reaches them while they are away. Do NOT use for progress updates or
   task-complete summaries.
@@ -37,11 +37,11 @@ curl -s \
 ```
 
 The placeholder topic `agent-notify-topic` is **public** — set `NTFY_TOPIC` to your own private
-topic before using this skill. Subscribe to that topic in the ntfy iOS/Android app.
+topic before using this skill. Subscribe to that topic via the ntfy service (app or web UI).
 
 ## Message content
 
-- **Title:** Always `Claude needs input` — consistent so the user can set an iOS focus filter on it
+- **Title:** Always `Claude needs input` — consistent so the user can set a notification filter on it
 - **Body:** One sentence, the actual question with enough context to answer without switching back.
   - Good: `What should the fallback behavior be when the config file is missing — error out or use defaults?`
   - Bad: `I need your help with something.`
