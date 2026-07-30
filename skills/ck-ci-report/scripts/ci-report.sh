@@ -33,11 +33,11 @@ fi
 
 URL_ENCODED_JOB=$(echo "${JOB_NAME}" | sed 's|%2F|%252F|g')
 BASE="http://micimaster.amd.com/job/rocm-libraries-folder/job/Composable%20Kernel/job/${URL_ENCODED_JOB}"
-_tmp="${CLAUDE_CODE_TMPDIR:-/tmp}"
-CONSOLE="${_tmp}/ci-console-${FILE_ID}.txt"
-REPORT="${_tmp}/ci-report-${FILE_ID}.md"
-STAGE_LOG="${_tmp}/ci-stage-log-${FILE_ID}.txt"
-STAGE_ERRORS="${_tmp}/ci-stage-errors-${FILE_ID}.txt"
+TMP="${CLAUDE_CODE_TMPDIR:-/tmp}"
+CONSOLE="${TMP}/ci-console-${FILE_ID}.txt"
+REPORT="${TMP}/ci-report-${FILE_ID}.md"
+STAGE_LOG="${TMP}/ci-stage-log-${FILE_ID}.txt"
+STAGE_ERRORS="${TMP}/ci-stage-errors-${FILE_ID}.txt"
 
 # ---------- 1. Get build metadata ----------
 echo "Fetching ${LABEL} build ${BUILD}..." >&2
@@ -56,7 +56,7 @@ if [ -z "${BUILD_JSON}" ]; then
     exit 0
 fi
 
-BUILD_VARS="${_tmp}/ci-build-vars-${FILE_ID}.sh"
+BUILD_VARS="${TMP}/ci-build-vars-${FILE_ID}.sh"
 python3 - "${BUILD_JSON}" "${BUILD_VARS}" <<'PYEOF'
 import json, sys, datetime
 d = json.loads(sys.argv[1])
@@ -76,7 +76,7 @@ if [ -z "${BUILD_RESULT}" ]; then
     # Build is still running — gather stage progress from Blue Ocean API
     BO_URL_BRANCH=$(echo "${BO_BRANCH}" | sed 's|%2F|%252F|g')
     BO_BASE="http://micimaster.amd.com/blue/rest/organizations/jenkins/pipelines/rocm-libraries-folder/pipelines/Composable%20Kernel/branches/${BO_URL_BRANCH}/runs/${BUILD_NUM}"
-    BO_NODES_RAW="${_tmp}/ci-nodes-${FILE_ID}.json"
+    BO_NODES_RAW="${TMP}/ci-nodes-${FILE_ID}.json"
     ${CURL} "${BO_BASE}/nodes/?limit=200" > "${BO_NODES_RAW}" 2>/dev/null || echo "[]" > "${BO_NODES_RAW}"
 
     PROGRESS=$(python3 - "${BO_NODES_RAW}" <<'PYEOF'
@@ -133,11 +133,11 @@ BO_URL_BRANCH=$(echo "${BO_BRANCH}" | sed 's|%2F|%252F|g')
 BO_BASE="http://micimaster.amd.com/blue/rest/organizations/jenkins/pipelines/rocm-libraries-folder/pipelines/Composable%20Kernel/branches/${BO_URL_BRANCH}/runs/${BUILD_NUM}"
 
 echo "Fetching stage info..." >&2
-BO_NODES_RAW="${_tmp}/ci-nodes-${FILE_ID}.json"
+BO_NODES_RAW="${TMP}/ci-nodes-${FILE_ID}.json"
 ${CURL} "${BO_BASE}/nodes/?limit=200" > "${BO_NODES_RAW}" 2>/dev/null || echo "[]" > "${BO_NODES_RAW}"
 
 # Parse nodes: get failed stage, skipped stages
-NODES_VARS="${_tmp}/ci-nodes-vars-${FILE_ID}.sh"
+NODES_VARS="${TMP}/ci-nodes-vars-${FILE_ID}.sh"
 python3 - "${BO_NODES_RAW}" "${NODES_VARS}" <<'PYEOF'
 import json, sys
 
@@ -180,10 +180,10 @@ IS_INFRA=false
 if [ -n "${FAILED_NODE_ID}" ]; then
     echo "Failed stage: ${FAILING_STAGE} (node ${FAILED_NODE_ID})" >&2
 
-    BO_STEPS_RAW="${_tmp}/ci-steps-${FILE_ID}.json"
+    BO_STEPS_RAW="${TMP}/ci-steps-${FILE_ID}.json"
     ${CURL} "${BO_BASE}/nodes/${FAILED_NODE_ID}/steps/?limit=200" > "${BO_STEPS_RAW}" 2>/dev/null || echo "[]" > "${BO_STEPS_RAW}"
 
-    STEPS_VARS="${_tmp}/ci-steps-vars-${FILE_ID}.sh"
+    STEPS_VARS="${TMP}/ci-steps-vars-${FILE_ID}.sh"
     python3 - "${BO_STEPS_RAW}" "${STEPS_VARS}" <<'PYEOF'
 import json, sys
 
