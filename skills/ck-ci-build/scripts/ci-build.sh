@@ -34,8 +34,8 @@ BROWSER="msedge"
 # Load config (browser preference)
 CONFIG_FILE="${SAVED_DIR}/config"
 if [ -f "${CONFIG_FILE}" ]; then
-    _cfg_browser=$(grep '^BROWSER=' "${CONFIG_FILE}" | head -1 | cut -d= -f2)
-    [ -n "${_cfg_browser}" ] && BROWSER="${_cfg_browser}"
+    CFG_BROWSER=$(grep '^BROWSER=' "${CONFIG_FILE}" | head -1 | cut -d= -f2)
+    [ -n "${CFG_BROWSER}" ] && BROWSER="${CFG_BROWSER}"
 fi
 
 # Resolve the user's actual browser profile path (avoids blank persistent session)
