@@ -19,6 +19,7 @@ A collection of Claude Code agent skills for specialized tasks.
 | **[handoff](skills/handoff/SKILL.md)** | Compact the current conversation into a single self-contained handoff document so a fresh agent can resume the work. Captures not just what's next but the operating rules, decisions, workflow, and dead ends, then emits a copy-paste kickoff prompt for the next session. |
 | **[context-watchdog](skills/context-watchdog/SKILL.md)** | Monitor Claude Code agent context usage across tmux panes. Scans all Claude panes in the current tmux window and reports their context percentage. Supports one-shot scan and recurring cron monitor modes. |
 | **[rotate](skills/rotate/SKILL.md)** | Hot-swap a running teammate while the session stays live. The main agent requests a rotation brief from the outgoing agent, stops it, and spawns a fresh replacement that resumes the task exactly where it left off. |
+| **[write-html-doc](skills/write-html-doc/SKILL.md)** | Produce a single self-contained HTML technical document in a fixed house style (light theme, all IBM Plex Mono, sticky sidebar TOC with scroll-spy, tables/callouts/chips, no charts). Converts a Markdown/text/source file to HTML or writes it straight from the conversation; editorialize or faithful conversion; locked template with per-request overrides. |
 
 ## Usage
 
