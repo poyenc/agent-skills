@@ -61,4 +61,45 @@ ROTATE_HANDOFF_POLL_SECS=2
 if ( rotate_handoff wG:p4 ) 2>/dev/null; then r=0; else r=1; fi
 assert_eq "handoff aborts when sentinel empty" "1" "$r"
 
+
+# Transient error must NOT count as gone.
+herdr(){ case "$1 $2" in "agent get") echo '{"error":{"code":"transport_error"}}'; return 1;; esac; echo "{}"; }
+assert_eq "transient != gone" "1" "$(rc rotate_gone wG:p4)"
+
+# agent_not_found + shell prompt = gone.
+herdr(){
+  case "$1 $2" in
+    "agent get") echo '{"error":{"code":"agent_not_found"}}'; return 1 ;;
+    "pane read") printf 'poyechen@host:~/x$ \n' ;;
+    *) echo "{}" ;;
+  esac
+}
+assert_eq "not_found+prompt = gone" "0" "$(rc rotate_gone wG:p4)"
+
+# agent_not_found but NO shell prompt yet = not gone.
+herdr(){
+  case "$1 $2" in
+    "agent get") echo '{"error":{"code":"agent_not_found"}}'; return 1 ;;
+    "pane read") printf 'still drawing agent ui\n' ;;
+    *) echo "{}" ;;
+  esac
+}
+assert_eq "not_found no-prompt = not gone" "1" "$(rc rotate_gone wG:p4)"
+
+# rotate_exit: present twice, then gone.
+CNT=$(mktemp); echo 2 > "$CNT"
+herdr(){
+  case "$1 $2" in
+    "agent prompt") echo '{"result":{}}' ;;
+    "agent get")
+      local n; n=$(cat "$CNT")
+      if [ "$n" -le 0 ]; then echo '{"error":{"code":"agent_not_found"}}'; return 1; fi
+      echo $((n-1)) > "$CNT"; echo '{"result":{"agent":{"agent_status":"working"}}}' ;;
+    "pane read") printf 'user@host:~$ \n' ;;
+    *) echo "{}" ;;
+  esac
+}
+ROTATE_EXIT_POLL_SECS=6
+assert_eq "exit succeeds when gone" "0" "$(rc rotate_exit wG:p4)"
+
 echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

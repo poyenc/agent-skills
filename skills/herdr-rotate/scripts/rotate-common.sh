@@ -120,3 +120,27 @@ rotate_handoff() {
   HANDOFF_PATH="$path"
   rotate_note "handoff verified: $HANDOFF_PATH"
 }
+
+# rc 0 iff the agent is confirmed gone AND the pane is back at a shell prompt.
+rotate_gone() {
+  local pane="$1" out
+  out=$(herdr agent get "$pane" 2>&1) || true
+  if printf '%s' "$out" | jq -e '.result.agent' >/dev/null 2>&1; then return 1; fi
+  printf '%s' "$out" | jq -e '.error.code=="agent_not_found"' >/dev/null 2>&1 || return 1
+  herdr pane read "$pane" --source visible --lines 6 2>/dev/null | grep -qE '[$#❯][[:space:]]*$'
+}
+
+rotate_exit() {
+  local pane="$1"
+  herdr agent prompt "$pane" "/quit" >/dev/null 2>&1 || true
+  local deadline=$(( SECONDS + ${ROTATE_EXIT_POLL_SECS:-25} ))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if rotate_gone "$pane"; then rotate_note "agent exited; pane $pane free"; return 0; fi
+    command sleep 1
+  done
+  if declare -F exit_fallback >/dev/null 2>&1; then
+    rotate_note "/quit did not settle; trying kind fallback"
+    exit_fallback "$pane" && return 0
+  fi
+  rotate_die "agent did not exit on pane $pane"
+}
