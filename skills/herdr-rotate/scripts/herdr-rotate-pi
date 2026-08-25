@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./rotate-common.sh
+source "$HERE/rotate-common.sh"
+MODEL_FLAG=--model; EFFORT_FLAG=--thinking; EFFORT_STYLE=flag
+
+validate_override() {   # pi model must be provider-qualified
+  local m="$1"
+  [ -z "$m" ] && return 0
+  case "$m" in */*) return 0 ;; *) rotate_die "pi model override must be provider-qualified (e.g. amd-gateway/$m)";; esac
+}
+
+exit_fallback() {       # pi ignores single ctrl-c/ctrl-d; two ctrl-d exit
+  local pane="$1"
+  herdr agent send-keys "$pane" ctrl+d ctrl+d >/dev/null 2>&1 || true
+  local deadline=$(( SECONDS + ${ROTATE_EXIT_POLL_SECS:-25} ))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    rotate_gone "$pane" && return 0
+    command sleep 1
+  done
+  return 1
+}
+
+rotate_main pi "$@"

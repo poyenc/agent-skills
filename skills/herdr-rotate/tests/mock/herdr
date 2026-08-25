@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Stateful mock herdr for flow tests. Config via env:
+#   MOCK_CALLS, MOCK_STATE (dir), MOCK_KIND, MOCK_PANE, MOCK_NAME,
+#   MOCK_SENT_OK (default 1), MOCK_VERIFY_ARGV (file; used for argv after start).
+set -uo pipefail
+printf '%s\n' "$*" >> "$MOCK_CALLS"
+gone(){ cat "$MOCK_STATE/gone" 2>/dev/null || echo 0; }
+started(){ cat "$MOCK_STATE/started" 2>/dev/null || echo 0; }
+case "$1 $2" in
+  "agent list")
+    jq -nc --arg k "$MOCK_KIND" --arg p "$MOCK_PANE" --arg n "${MOCK_NAME:-}" \
+      '{result:{agents:[({agent:$k,pane_id:$p}+(if $n=="" then {} else {name:$n} end))]}}' ;;
+  "pane process-info")
+    src="$MOCK_STATE/argv"
+    if [ -n "${MOCK_VERIFY_ARGV:-}" ] && [ "$(started)" = 1 ]; then src="$MOCK_VERIFY_ARGV"; fi
+    mapfile -t A < "$src" 2>/dev/null || A=()
+    jq -nc --arg k "$MOCK_KIND" --args \
+      '{result:{process_info:{foreground_processes:[{name:$k,argv:([$k]+$ARGS.positional)}]}}}' -- "${A[@]}" ;;
+  "agent prompt")
+    p="$4"
+    if printf '%s' "$p" | grep -qi 'handoff'; then
+      if [ "${MOCK_SENT_OK:-1}" = 1 ]; then
+        sent=$(printf '%s' "$p" | grep -oE '/[^ ]*rotate-sentinel[^ ]*' | head -n1)
+        dir="${TMPDIR:-/tmp}/handoff-$(id -un)"; mkdir -p "$dir"
+        f="$dir/260825-000000-handoff-mock.md"; printf '# h\n' > "$f"
+        [ -n "$sent" ] && printf '%s\n' "$f" > "$sent"
+      fi
+    elif [ "$p" = "/quit" ]; then echo 1 > "$MOCK_STATE/gone"; fi
+    echo '{"result":{"type":"agent_prompted"}}' ;;
+  "agent get")
+    [ "$(gone)" = 1 ] && { echo '{"error":{"code":"agent_not_found"}}'; exit 1; }
+    echo '{"result":{"agent":{"agent_status":"idle"}}}' ;;
+  "pane read")
+    if [ "$(gone)" = 1 ]; then printf 'user@host:~/x$ \n'; else printf 'agent ui drawing\n'; fi ;;
+  "agent start")
+    shift; while [ $# -gt 0 ] && [ "$1" != "--" ]; do shift; done; [ "${1:-}" = "--" ] && shift
+    : > "$MOCK_STATE/argv"; for a in "$@"; do printf '%s\n' "$a" >> "$MOCK_STATE/argv"; done
+    echo 1 > "$MOCK_STATE/started"; echo 0 > "$MOCK_STATE/gone"
+    echo '{"result":{"agent":{}}}' ;;
+  "agent send-keys") echo 1 > "$MOCK_STATE/gone"; echo '{"result":{"type":"ok"}}' ;;
+  *) echo "{}" ;;
+esac

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./rotate-common.sh
+source "$HERE/rotate-common.sh"
+
+rotate_guard || { rotate_note "not in herdr (HERDR_ENV != 1); no-op"; exit 0; }
+
+target=""
+for a in "$@"; do case "$a" in -*) ;; *) target="$a"; break ;; esac; done
+[ -n "$target" ] || rotate_die "usage: herdr-rotate <name-or-pane> [--name N] [--model M] [--effort E] [--kickoff MSG] [--no-kickoff]"
+rotate_resolve "$target"
+script="$HERE/herdr-rotate-$ROTATE_KIND"
+[ -x "$script" ] || rotate_die "unsupported kind: $ROTATE_KIND"
+exec "$script" "$@"
