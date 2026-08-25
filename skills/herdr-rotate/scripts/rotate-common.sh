@@ -16,3 +16,51 @@ rotate_derive_name() {
 
 # herdr agent-name grammar.
 rotate_valid_name() { [[ "$1" =~ ^[a-z][a-z0-9_-]{0,31}$ ]]; }
+
+rotate_strip_context_flags() {
+  local skip=0 tok
+  for tok in "$@"; do
+    if [ "$skip" = 1 ]; then skip=0; continue; fi
+    case "$tok" in
+      --continue)             ;;
+      --resume|-r|--session)  skip=1 ;;
+      --resume=*|--session=*) ;;
+      *) printf '%s\0' "$tok" ;;
+    esac
+  done
+}
+
+replace_or_append_flag() {
+  local -n _arr="$1"; local flag="$2" val="$3" out=() n=${#_arr[@]} j=0 found=0
+  while [ "$j" -lt "$n" ]; do
+    if [ "${_arr[$j]}" = "$flag" ]; then out+=("$flag" "$val"); j=$((j+2)); found=1
+    elif [[ "${_arr[$j]}" == "$flag="* ]]; then out+=("$flag=$val"); j=$((j+1)); found=1
+    else out+=("${_arr[$j]}"); j=$((j+1)); fi
+  done
+  [ "$found" = 1 ] || out+=("$flag" "$val")
+  _arr=("${out[@]}")
+}
+
+replace_or_append_kv() {
+  local -n _arr="$1"; local key="$2" val="$3" out=() n=${#_arr[@]} j=0 found=0
+  while [ "$j" -lt "$n" ]; do
+    if [ "${_arr[$j]}" = "-c" ] && [ $((j+1)) -lt "$n" ] && [[ "${_arr[$((j+1))]}" == "$key="* ]]; then
+      out+=("-c" "$key=$val"); j=$((j+2)); found=1
+    else out+=("${_arr[$j]}"); j=$((j+1)); fi
+  done
+  [ "$found" = 1 ] || out+=("-c" "$key=$val")
+  _arr=("${out[@]}")
+}
+
+# Shared. Requires globals MODEL_FLAG, EFFORT_FLAG, EFFORT_STYLE (set by per-kind script).
+rotate_apply_override() {
+  local m="$1" e="$2"
+  [ -n "$m" ] && replace_or_append_flag BASE_FLAGS "$MODEL_FLAG" "$m"
+  if [ -n "$e" ]; then
+    case "$EFFORT_STYLE" in
+      flag) replace_or_append_flag BASE_FLAGS "$EFFORT_FLAG" "$e" ;;
+      kv)   replace_or_append_kv   BASE_FLAGS "$EFFORT_FLAG" "$e" ;;
+      *) rotate_die "unknown EFFORT_STYLE: $EFFORT_STYLE" ;;
+    esac
+  fi
+}
