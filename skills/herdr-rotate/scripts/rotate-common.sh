@@ -42,6 +42,7 @@ replace_or_append_flag() {
 }
 
 replace_or_append_kv() {
+  # shellcheck disable=SC2178
   local -n _arr="$1"; local key="$2" val="$3" out=() n=${#_arr[@]} j=0 found=0
   while [ "$j" -lt "$n" ]; do
     if [ "${_arr[$j]}" = "-c" ] && [ $((j+1)) -lt "$n" ] && [[ "${_arr[$((j+1))]}" == "$key="* ]]; then

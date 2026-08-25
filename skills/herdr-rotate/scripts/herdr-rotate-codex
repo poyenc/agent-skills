@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./rotate-common.sh
+# shellcheck source=SCRIPTDIR/rotate-common.sh
 source "$HERE/rotate-common.sh"
 MODEL_FLAG=-m; EFFORT_FLAG=model_reasoning_effort; EFFORT_STYLE=kv
 rotate_main codex "$@"

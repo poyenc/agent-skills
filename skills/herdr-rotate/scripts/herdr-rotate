@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./rotate-common.sh
+# shellcheck source=SCRIPTDIR/rotate-common.sh
 source "$HERE/rotate-common.sh"
 
 rotate_guard || { rotate_note "not in herdr (HERDR_ENV != 1); no-op"; exit 0; }
