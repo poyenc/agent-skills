@@ -101,7 +101,6 @@ rotate_handoff() {
   local marker sentinel
   marker=$(mktemp "$dir/.rotate-marker.XXXXXX")
   sentinel=$(mktemp "${TMPDIR:-/tmp}/rotate-sentinel.XXXXXX")
-  trap 'rm -f "$marker" "$sentinel"' RETURN
   local prompt; printf -v prompt "$ROTATE_HANDOFF_PROMPT" "$dir" "$sentinel"
   herdr agent prompt "$pane" "$prompt" --wait --timeout "${ROTATE_HANDOFF_TIMEOUT_MS:-180000}" >/dev/null 2>&1 || true
   local path="" deadline=$(( SECONDS + ${ROTATE_HANDOFF_POLL_SECS:-90} ))
@@ -110,10 +109,14 @@ rotate_handoff() {
     [ -n "$path" ] && break
     command sleep 1
   done
-  [ -n "$path" ] || rotate_die "handoff sentinel empty (agent reported no path)"
-  case "$path" in "$dir"/*) ;; *) rotate_die "handoff path not under $dir: $path" ;; esac
-  [ -f "$path" ] && [ -s "$path" ] || rotate_die "handoff file missing/empty: $path"
-  [ "$path" -nt "$marker" ] || rotate_die "handoff file not newer than marker: $path"
+  local err=""
+  if   [ -z "$path" ]; then err="handoff sentinel empty (agent reported no path)"
+  elif [ "${path#"$dir"/}" = "$path" ]; then err="handoff path not under $dir: $path"
+  elif [ ! -f "$path" ] || [ ! -s "$path" ]; then err="handoff file missing/empty: $path"
+  elif [ ! "$path" -nt "$marker" ]; then err="handoff file not newer than marker: $path"
+  fi
+  rm -f "$marker" "$sentinel"
+  [ -z "$err" ] || rotate_die "$err"
   HANDOFF_PATH="$path"
   rotate_note "handoff verified: $HANDOFF_PATH"
 }
