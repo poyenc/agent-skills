@@ -102,4 +102,29 @@ herdr(){
 ROTATE_EXIT_POLL_SECS=6
 assert_eq "exit succeeds when gone" "0" "$(rc rotate_exit wG:p4)"
 
+STARTLOG=$(mktemp)
+herdr(){ case "$1 $2" in "agent start") shift; printf '%s\n' "$*" > "$STARTLOG"; echo '{"result":{"agent":{}}}';; esac; echo '{"result":{}}'; }
+rotate_relaunch lead claude wG:p4 --model opus --verbose
+assert_eq "start kind+pane" "0" "$(rc grep -q -- '--kind claude --pane wG:p4' "$STARTLOG")"
+assert_eq "start replays flags" "0" "$(rc grep -q -- '-- --model opus --verbose' "$STARTLOG")"
+
+# verify: ready + exact argv match (incl a spaced element)
+mkproc(){ jq -nc --args '{result:{process_info:{foreground_processes:[{name:"claude",argv:$ARGS.positional}]}}}' -- "$@"; }
+herdr(){
+  case "$1 $2" in
+    "agent get") echo '{"result":{"agent":{"agent_status":"idle"}}}' ;;
+    "pane process-info") printf '%s' "$PROC" ;;
+    *) echo "{}" ;;
+  esac
+}
+PROC=$(mkproc claude --model "opus a" --verbose)
+assert_eq "verify match (spaced arg)" "0" "$(rc rotate_verify lead wG:p4 claude -- --model "opus a" --verbose)"
+# ambiguous split must NOT compare equal
+PROC=$(mkproc claude --model opus --verbose)
+assert_eq "verify rejects split diff" "1" "$(rc rotate_verify lead wG:p4 claude -- --model "opus --verbose")"
+# not ready -> fail
+herdr(){ case "$1 $2" in "agent get") echo '{"result":{"agent":{"agent_status":"working"}}}';; *) echo "{}";; esac; }
+ROTATE_VERIFY_POLL_SECS=2
+assert_eq "verify not-ready fails" "1" "$(rc rotate_verify lead wG:p4 claude -- --model opus)"
+
 echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

@@ -144,3 +144,36 @@ rotate_exit() {
   fi
   rotate_die "agent did not exit on pane $pane"
 }
+
+rotate_relaunch() {
+  local name="$1" kind="$2" pane="$3"; shift 3
+  herdr agent start "$name" --kind "$kind" --pane "$pane" \
+    --timeout "${ROTATE_START_TIMEOUT_MS:-120000}" -- "$@" >/dev/null 2>&1 \
+    || rotate_die "relaunch failed for $name"
+  rotate_note "relaunched $name ($kind) in $pane"
+}
+
+rotate_verify() {
+  local name="$1" pane="$2" kind="$3"; shift 3
+  [ "${1:-}" = "--" ] && shift
+  local -a intended=( "$@" )
+  local deadline=$(( SECONDS + ${ROTATE_VERIFY_POLL_SECS:-30} )) st=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    st=$(herdr agent get "$name" 2>/dev/null | jq -r '.result.agent.agent_status // empty')
+    case "$st" in idle|done) break ;; esac
+    command sleep 1
+  done
+  case "$st" in idle|done) ;; *) rotate_note "verify: agent not ready ($st)"; return 1 ;; esac
+  local -a BASE_FLAGS=()
+  rotate_capture_argv "$pane" "$kind"
+  if [ "${#BASE_FLAGS[@]}" -ne "${#intended[@]}" ]; then
+    rotate_note "verify: argv length ${#BASE_FLAGS[@]} != ${#intended[@]}"; return 1
+  fi
+  local i
+  for i in "${!intended[@]}"; do
+    if [ "${BASE_FLAGS[$i]}" != "${intended[$i]}" ]; then
+      rotate_note "verify: argv[$i] '${BASE_FLAGS[$i]}' != '${intended[$i]}'"; return 1
+    fi
+  done
+  rotate_note "verify OK"; return 0
+}
