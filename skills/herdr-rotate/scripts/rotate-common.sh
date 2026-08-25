@@ -177,3 +177,49 @@ rotate_verify() {
   done
   rotate_note "verify OK"; return 0
 }
+
+rotate_kickoff() {
+  local pane="$1" path="$2" msg="${3:-}"
+  if [ "${NO_KICKOFF:-0}" = 1 ]; then rotate_note "kickoff skipped (--no-kickoff)"; return 0; fi
+  local text
+  if [ -n "$msg" ]; then text="$msg"
+  else text="Continue the work described in the handoff at ${path}. Read it fully first, including every file it references, before doing anything. Then pick up the task list where it leaves off."; fi
+  herdr agent prompt "$pane" "$text" >/dev/null 2>&1 \
+    || rotate_note "kickoff prompt may not have registered; verify manually"
+}
+
+# Single entry. Per-kind scripts set MODEL_FLAG/EFFORT_FLAG/EFFORT_STYLE (+ optional
+# validate_override / exit_fallback) then call this.
+rotate_main() {
+  local expected_kind="$1"; shift
+  rotate_guard || { rotate_note "not in herdr (HERDR_ENV != 1); no-op"; exit 0; }
+  local target="" OVERRIDE_NAME="" OVERRIDE_MODEL="" OVERRIDE_EFFORT="" KICKOFF="" NO_KICKOFF=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name)    [ $# -ge 2 ] || rotate_die "--name needs a value";    OVERRIDE_NAME="$2";   shift 2 ;;
+      --model)   [ $# -ge 2 ] || rotate_die "--model needs a value";   OVERRIDE_MODEL="$2";  shift 2 ;;
+      --effort)  [ $# -ge 2 ] || rotate_die "--effort needs a value";  OVERRIDE_EFFORT="$2"; shift 2 ;;
+      --kickoff) [ $# -ge 2 ] || rotate_die "--kickoff needs a value"; KICKOFF="$2";         shift 2 ;;
+      --no-kickoff) NO_KICKOFF=1; shift ;;
+      --) shift ;;
+      -*) rotate_die "unknown option: $1" ;;
+      *) [ -z "$target" ] || rotate_die "unexpected extra argument: $1"; target="$1"; shift ;;
+    esac
+  done
+  [ -n "$target" ] || rotate_die "usage: herdr-rotate-$expected_kind <name-or-pane> [--name N] [--model M] [--effort E] [--kickoff MSG] [--no-kickoff]"
+  rotate_resolve "$target"
+  [ "$ROTATE_KIND" = "$expected_kind" ] || rotate_die "target is $ROTATE_KIND, not $expected_kind"
+  rotate_valid_name "$ROTATE_NAME" || rotate_die "invalid agent name: $ROTATE_NAME"
+  declare -F validate_override >/dev/null 2>&1 && validate_override "$OVERRIDE_MODEL" "$OVERRIDE_EFFORT"
+  rotate_capture_argv "$ROTATE_PANE" "$ROTATE_KIND"
+  rotate_apply_override "$OVERRIDE_MODEL" "$OVERRIDE_EFFORT"
+  local -a intended=( "${BASE_FLAGS[@]}" )
+  rotate_handoff "$ROTATE_PANE"
+  rotate_exit "$ROTATE_PANE"
+  rotate_relaunch "$ROTATE_NAME" "$ROTATE_KIND" "$ROTATE_PANE" "${BASE_FLAGS[@]}"
+  local vrc=0
+  rotate_verify "$ROTATE_NAME" "$ROTATE_PANE" "$ROTATE_KIND" -- "${intended[@]}" || vrc=$?
+  rotate_kickoff "$ROTATE_PANE" "$HANDOFF_PATH" "$KICKOFF"
+  [ "$vrc" -eq 0 ] || rotate_die "relaunched but argv verification FAILED — inspect $ROTATE_NAME"
+  rotate_note "rotation complete: $ROTATE_NAME ($ROTATE_KIND) in $ROTATE_PANE"
+}

@@ -127,4 +127,22 @@ herdr(){ case "$1 $2" in "agent get") echo '{"result":{"agent":{"agent_status":"
 ROTATE_VERIFY_POLL_SECS=2
 assert_eq "verify not-ready fails" "1" "$(rc rotate_verify lead wG:p4 claude -- --model opus)"
 
+# kickoff
+KOLOG=$(mktemp)
+herdr(){ case "$1 $2" in "agent prompt") shift; printf '%s\n' "$*" >> "$KOLOG";; esac; echo '{"result":{}}'; }
+: > "$KOLOG"; NO_KICKOFF=0; rotate_kickoff wG:p4 /tmp/h/x.md
+assert_eq "kickoff cites path" "1" "$(grep -c '/tmp/h/x.md' "$KOLOG")"
+: > "$KOLOG"; rotate_kickoff wG:p4 /tmp/h/x.md "custom go"
+assert_eq "kickoff override" "1" "$(grep -c 'custom go' "$KOLOG")"
+: > "$KOLOG"; NO_KICKOFF=1; rotate_kickoff wG:p4 /tmp/h/x.md
+assert_eq "no-kickoff sends nothing" "0" "$(wc -l < "$KOLOG" | tr -d ' ')"
+NO_KICKOFF=0
+
+# rotate_main early-exit paths (no herdr contact needed; guard/parse fail first)
+MODEL_FLAG=--model EFFORT_FLAG=--effort EFFORT_STYLE=flag
+( HERDR_ENV=0; rotate_main claude foo >/dev/null 2>&1 ); assert_eq "no-op outside herdr" "0" "$?"
+( HERDR_ENV=1; herdr(){ :;}; rotate_main claude --bogus x >/dev/null 2>&1 ); assert_eq "unknown option dies" "1" "$?"
+( HERDR_ENV=1; herdr(){ :;}; rotate_main claude --model >/dev/null 2>&1 ); assert_eq "missing value dies" "1" "$?"
+( HERDR_ENV=1; herdr(){ :;}; rotate_main claude a b >/dev/null 2>&1 ); assert_eq "extra positional dies" "1" "$?"
+
 echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
