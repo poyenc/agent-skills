@@ -90,3 +90,30 @@ rotate_resolve() {
     rotate_note "agent unnamed; assigned name: $ROTATE_NAME"
   fi
 }
+
+# Two %s: handoff dir, sentinel path.
+ROTATE_HANDOFF_PROMPT='Write a handoff document so a fresh agent can continue this work with full context. Capture: the objective and what "done" looks like; the task list (done / in progress / not started); key files, branch, and build/test/run commands; the operating rules and decisions made this session with their rationale; dead ends already ruled out; and any in-flight work. Keep only what the remaining work needs; strip secrets, keys, and PII. Save it to %s/<YYMMDD-HHMMSS>-handoff-<short-topic>.md (create the directory with mkdir -m 700 -p if needed). When done, write the absolute path of the file you created into %s (overwrite that file with just the path), and also reply with only that path — nothing else.'
+
+rotate_handoff() {
+  local pane="$1"
+  local dir="${TMPDIR:-/tmp}/handoff-$(id -un)"
+  mkdir -p "$dir"; chmod 700 "$dir" 2>/dev/null || true
+  local marker sentinel
+  marker=$(mktemp "$dir/.rotate-marker.XXXXXX")
+  sentinel=$(mktemp "${TMPDIR:-/tmp}/rotate-sentinel.XXXXXX")
+  trap 'rm -f "$marker" "$sentinel"' RETURN
+  local prompt; printf -v prompt "$ROTATE_HANDOFF_PROMPT" "$dir" "$sentinel"
+  herdr agent prompt "$pane" "$prompt" --wait --timeout "${ROTATE_HANDOFF_TIMEOUT_MS:-180000}" >/dev/null 2>&1 || true
+  local path="" deadline=$(( SECONDS + ${ROTATE_HANDOFF_POLL_SECS:-90} ))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    path=$(head -n1 "$sentinel" 2>/dev/null | tr -d '[:space:]')
+    [ -n "$path" ] && break
+    command sleep 1
+  done
+  [ -n "$path" ] || rotate_die "handoff sentinel empty (agent reported no path)"
+  case "$path" in "$dir"/*) ;; *) rotate_die "handoff path not under $dir: $path" ;; esac
+  [ -f "$path" ] && [ -s "$path" ] || rotate_die "handoff file missing/empty: $path"
+  [ "$path" -nt "$marker" ] || rotate_die "handoff file not newer than marker: $path"
+  HANDOFF_PATH="$path"
+  rotate_note "handoff verified: $HANDOFF_PATH"
+}

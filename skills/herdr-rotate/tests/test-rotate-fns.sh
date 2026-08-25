@@ -32,4 +32,33 @@ assert_eq "multiline arg preserved" $'line1\nline2' "${BASE_FLAGS[1]}"
 assert_eq "model flag" "--model" "${BASE_FLAGS[2]}"
 assert_eq "spaced value preserved" "opus a" "${BASE_FLAGS[3]}"
 
+export TMPDIR; TMPDIR=$(mktemp -d)
+HDIR="$TMPDIR/handoff-$(id -un)"; mkdir -p "$HDIR"
+
+# Mock: prompt extracts the sentinel path from the prompt text, writes a handoff file,
+# and records that file's path into the sentinel (simulating the agent).
+herdr(){
+  case "$1 $2" in
+    "agent prompt")
+      local p="$4" sent; sent=$(printf '%s' "$p" | grep -oE '/[^ ]*rotate-sentinel[^ ]*' | head -n1)
+      local f="$HDIR/260825-000000-handoff-real.md"
+      printf '# Handoff\nwork\n' > "$f"
+      printf '%s\n' "$f" > "$sent"
+      echo '{"result":{"type":"agent_prompted"}}' ;;
+    *) echo "{}" ;;
+  esac
+}
+# A DECOY newer file from a "concurrent rotation" must be ignored (we use the sentinel).
+printf 'decoy\n' > "$HDIR/999999-handoff-decoy.md"
+ROTATE_HANDOFF_POLL_SECS=5
+rotate_handoff wG:p4
+assert_eq "handoff uses sentinel file (not decoy)" "$HDIR/260825-000000-handoff-real.md" "$HANDOFF_PATH"
+assert_eq "handoff file nonempty" "1" "$([ -s "$HANDOFF_PATH" ] && echo 1 || echo 0)"
+
+# Failure: agent never writes the sentinel -> abort, no HANDOFF_PATH.
+herdr(){ echo '{"result":{}}'; }
+ROTATE_HANDOFF_POLL_SECS=2
+if ( rotate_handoff wG:p4 ) 2>/dev/null; then r=0; else r=1; fi
+assert_eq "handoff aborts when sentinel empty" "1" "$r"
+
 echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
