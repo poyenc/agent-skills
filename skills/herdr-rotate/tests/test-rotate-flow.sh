@@ -53,6 +53,11 @@ setup pi worker
 run "$S/herdr-rotate" worker --model amd-gateway/gpt-5.6-terra >/dev/null 2>&1; assert_eq "dispatch pi exit 0" "0" "$?"
 assert_eq "dispatch forwarded override" "1" "$(grep -cx 'amd-gateway/gpt-5.6-terra' "$MOCK_STATE/argv")"
 
+# 6b. dispatcher resolves target correctly when a value-flag precedes it
+setup pi worker
+run "$S/herdr-rotate" --model amd-gateway/gpt-5.6-terra worker >/dev/null 2>&1; assert_eq "dispatch flag-before-target exit 0" "0" "$?"
+assert_eq "dispatch flag-before-target forwarded override" "1" "$(grep -cx 'amd-gateway/gpt-5.6-terra' "$MOCK_STATE/argv")"
+
 # 7. no-op via per-kind exec outside herdr (no herdr calls)
 setup claude lead
 ( env -u HERDR_ENV bash "$S/herdr-rotate-claude" lead >/dev/null 2>&1 ); assert_eq "no-op exit 0" "0" "$?"

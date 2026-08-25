@@ -7,7 +7,15 @@ source "$HERE/rotate-common.sh"
 rotate_guard || { rotate_note "not in herdr (HERDR_ENV != 1); no-op"; exit 0; }
 
 target=""
-for a in "$@"; do case "$a" in -*) ;; *) target="$a"; break ;; esac; done
+args=("$@"); i=0
+while [ "$i" -lt "${#args[@]}" ]; do
+  case "${args[$i]}" in
+    --name|--model|--effort|--kickoff) i=$((i+2)) ;;   # flag + its value
+    --) i=$((i+1)) ;;
+    -*) i=$((i+1)) ;;                                   # valueless flag (e.g. --no-kickoff)
+    *) target="${args[$i]}"; break ;;
+  esac
+done
 [ -n "$target" ] || rotate_die "usage: herdr-rotate <name-or-pane> [--name N] [--model M] [--effort E] [--kickoff MSG] [--no-kickoff]"
 rotate_resolve "$target"
 script="$HERE/herdr-rotate-$ROTATE_KIND"
