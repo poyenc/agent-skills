@@ -65,6 +65,17 @@ rotate_apply_override() {
   fi
 }
 
+rotate_capture_argv() {
+  local pane="$1" kind="$2" json
+  json=$(herdr pane process-info --pane "$pane" 2>/dev/null) \
+    || rotate_die "process-info failed for pane $pane"
+  local -a raw
+  mapfile -d '' -t raw < <(printf '%s' "$json" | jq -j --arg k "$kind" '
+    .result.process_info.foreground_processes[] | select(.name==$k) | .argv[] | . + "\u0000"')
+  [ "${#raw[@]}" -gt 0 ] || rotate_die "no $kind process on pane $pane"
+  mapfile -d '' -t BASE_FLAGS < <(rotate_strip_context_flags "${raw[@]:1}")
+}
+
 rotate_resolve() {
   local target="$1" row
   row=$(herdr agent list 2>/dev/null \

@@ -21,4 +21,15 @@ assert_eq "derived name"  "pi-wgp7" "$ROTATE_NAME"
 OVERRIDE_NAME="profiler"; rotate_resolve wG:p7
 assert_eq "override name" "profiler" "$ROTATE_NAME"
 
+# argv with a space AND an embedded newline must survive; argv0 dropped; --continue stripped.
+MOCK_PROCINFO=$(jq -nc '{result:{process_info:{foreground_processes:[
+  {name:"claude",argv:["claude","--append-system-prompt","line1\nline2","--continue","--model","opus a"]}]}}}')
+herdr(){ case "$1 $2" in "pane process-info") printf '%s' "$MOCK_PROCINFO";; *) echo "{}";; esac; }
+rotate_capture_argv wG:p4 claude
+assert_eq "argv count"       "4" "${#BASE_FLAGS[@]}"
+assert_eq "flag0" "--append-system-prompt" "${BASE_FLAGS[0]}"
+assert_eq "multiline arg preserved" $'line1\nline2' "${BASE_FLAGS[1]}"
+assert_eq "model flag" "--model" "${BASE_FLAGS[2]}"
+assert_eq "spaced value preserved" "opus a" "${BASE_FLAGS[3]}"
+
 echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
