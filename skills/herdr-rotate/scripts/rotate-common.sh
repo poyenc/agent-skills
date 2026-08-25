@@ -64,3 +64,18 @@ rotate_apply_override() {
     esac
   fi
 }
+
+rotate_resolve() {
+  local target="$1" row
+  row=$(herdr agent list 2>/dev/null \
+        | jq -r --arg t "$target" '
+            first(.result.agents[] | select(.name==$t or .pane_id==$t))
+            | [.agent, .pane_id, (.name // "")] | @tsv') || rotate_die "agent list failed"
+  [ -n "$row" ] && [ "$row" != $'\t\t' ] || rotate_die "target not found: $target"
+  IFS=$'\t' read -r ROTATE_KIND ROTATE_PANE ROTATE_NAME <<<"$row"
+  if [ -z "$ROTATE_NAME" ]; then
+    if [ -n "${OVERRIDE_NAME:-}" ]; then ROTATE_NAME="$OVERRIDE_NAME"
+    else ROTATE_NAME=$(rotate_derive_name "$ROTATE_KIND" "$ROTATE_PANE"); fi
+    rotate_note "agent unnamed; assigned name: $ROTATE_NAME"
+  fi
+}
