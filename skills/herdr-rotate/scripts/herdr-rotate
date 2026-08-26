@@ -4,7 +4,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=SCRIPTDIR/rotate-common.sh
 source "$HERE/rotate-common.sh"
 
-rotate_guard || { rotate_note "not in herdr (HERDR_ENV != 1); no-op"; exit 0; }
+guard || { note "not in herdr (HERDR_ENV != 1); no-op"; exit 0; }
+
+sub="${1:-}"
+case "$sub" in
+  handoff|finish) shift ;;
+  *) die "usage: herdr-rotate <handoff|finish> <name-or-pane> [...]" ;;
+esac
 
 target=""
 args=("$@"); i=0
@@ -16,8 +22,8 @@ while [ "$i" -lt "${#args[@]}" ]; do
     *) target="${args[$i]}"; break ;;
   esac
 done
-[ -n "$target" ] || rotate_die "usage: herdr-rotate <name-or-pane> [--name N] [--model M] [--effort E] [--kickoff MSG] [--no-kickoff]"
-rotate_resolve "$target"
+[ -n "$target" ] || die "usage: herdr-rotate $sub <name-or-pane> [--name N] [--model M] [--effort E] [--kickoff MSG] [--no-kickoff]"
+resolve "$target"
 script="$HERE/herdr-rotate-$ROTATE_KIND"
-[ -x "$script" ] || rotate_die "unsupported kind: $ROTATE_KIND"
-exec "$script" "$@"
+[ -x "$script" ] || die "unsupported kind: $ROTATE_KIND"
+exec "$script" "$sub" "$@"
