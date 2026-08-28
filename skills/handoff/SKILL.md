@@ -56,8 +56,7 @@ Then output a ready-to-paste prompt for the next session, wrapped in the exact m
 ```
 ========== COPY TO START NEXT SESSION ==========
 Continue the work described in the handoff at <resolved-path>.
-Read it fully first, including every file it references, before doing anything.
-Follow the operating rules and decisions in it as if given to you directly.
+Follow the operating rules and decisions in it as if given to you directly, without proactively reading the files it references -- open each one only when a task step actually needs it.
 Then pick up the task list where it leaves off.
 ===================== END ======================
 ```
