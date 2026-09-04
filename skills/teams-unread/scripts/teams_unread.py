@@ -27,6 +27,9 @@ _PRESENCE_VALUES = (
     "Unknown",
 )
 
+# Order matters only if a future prefix could be a substring of another
+# (e.g. adding "Video chat " before "Chat " would be fine either way, but
+# keep more-specific prefixes first as a general rule).
 _CHAT_TYPE_PREFIXES = ("Group chat ", "Meeting chat ", "Chat ")
 
 _TRAILING_TIMESTAMP_RE = re.compile(
