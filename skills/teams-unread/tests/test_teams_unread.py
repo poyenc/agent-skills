@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import datetime as dt
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -57,3 +58,34 @@ def test_parse_chat_item_group_chat_unread_pinned_muted():
         "last_message": "Deploy is done",
         "timestamp_raw": "AM 10:52",
     }
+
+
+def test_resolve_timestamp_bare_time_today():
+    now = dt.datetime(2026, 9, 4, 15, 0, 0)
+    assert tu.resolve_timestamp("AM 10:52", now) == "2026-09-04T10:52:00"
+
+
+def test_resolve_timestamp_bare_time_pm():
+    now = dt.datetime(2026, 9, 4, 15, 0, 0)
+    assert tu.resolve_timestamp("PM 12:23", now) == "2026-09-04T12:23:00"
+
+
+def test_resolve_timestamp_yesterday():
+    now = dt.datetime(2026, 9, 4, 15, 0, 0)
+    assert tu.resolve_timestamp("Yesterday at AM 11:45.", now) == "2026-09-03T11:45:00"
+
+
+def test_resolve_timestamp_today_with_at():
+    now = dt.datetime(2026, 9, 4, 15, 0, 0)
+    assert tu.resolve_timestamp("Today at PM 12:21.", now) == "2026-09-04T12:21:00"
+
+
+def test_resolve_timestamp_month_day():
+    now = dt.datetime(2026, 9, 4, 15, 0, 0)
+    assert tu.resolve_timestamp("9/3", now) == "2026-09-03"
+
+
+def test_resolve_timestamp_unrecognized_raises():
+    now = dt.datetime(2026, 9, 4, 15, 0, 0)
+    with pytest.raises(ValueError):
+        tu.resolve_timestamp("not a timestamp", now)

@@ -8,6 +8,7 @@ Windows-only. Requires pywinauto and a running Teams desktop app.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 
 _PRESENCE_VALUES = (
@@ -93,3 +94,43 @@ def parse_chat_item(raw: str) -> dict:
         "last_message": last_message.strip(),
         "timestamp_raw": timestamp_raw,
     }
+
+
+_BARE_TIME_RE = re.compile(r"^(AM|PM) (\d{1,2}):(\d{2})$")
+_YESTERDAY_RE = re.compile(r"^Yesterday(?: at)? (AM|PM) (\d{1,2}):(\d{2})\.?$")
+_TODAY_RE = re.compile(r"^Today(?: at)? (AM|PM) (\d{1,2}):(\d{2})\.?$")
+_MONTH_DAY_RE = re.compile(r"^(\d{1,2})/(\d{1,2})$")
+
+
+def _combine_date_and_ampm_time(date, ampm: str, hour: str, minute: str) -> str:
+    h = int(hour) % 12
+    if ampm == "PM":
+        h += 12
+    return dt.datetime.combine(date, dt.time(h, int(minute))).isoformat()
+
+
+def resolve_timestamp(raw: str, now: dt.datetime) -> str:
+    """Normalize a Teams relative timestamp label to absolute ISO 8601,
+    using ``now`` as the anchor for "today"/"yesterday". Raises ValueError
+    for any format not recognized — never guesses."""
+    raw = raw.strip()
+
+    m = _BARE_TIME_RE.match(raw)
+    if m:
+        return _combine_date_and_ampm_time(now.date(), *m.groups())
+
+    m = _YESTERDAY_RE.match(raw)
+    if m:
+        date = (now - dt.timedelta(days=1)).date()
+        return _combine_date_and_ampm_time(date, *m.groups())
+
+    m = _TODAY_RE.match(raw)
+    if m:
+        return _combine_date_and_ampm_time(now.date(), *m.groups())
+
+    m = _MONTH_DAY_RE.match(raw)
+    if m:
+        month, day = int(m.group(1)), int(m.group(2))
+        return dt.date(now.year, month, day).isoformat()
+
+    raise ValueError(f"Unrecognized timestamp format: {raw!r}")
