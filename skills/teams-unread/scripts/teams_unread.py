@@ -239,3 +239,86 @@ def format_retrieve_line(message: dict) -> str:
     return (
         f"{message['timestamp_iso']}\t{message['sender']}\t{tags_str}\t{message['body']}"
     )
+
+
+import sys
+import time
+
+from pywinauto import Desktop
+
+
+def get_teams_window():
+    """Locate the Teams desktop main window. Exits with a clear error if
+    Teams isn't running or the window can't be found."""
+    try:
+        app = Desktop(backend="uia")
+        return app.window(title_re=".*Microsoft Teams$")
+    except Exception as exc:  # pywinauto raises various ElementNotFoundError subtypes
+        print(f"Error: could not find Teams window ({exc})", file=sys.stderr)
+        sys.exit(1)
+
+
+def collect_unread_chat_items(window) -> list:
+    """Return the raw accessible-name strings of every TreeItem in the
+    chat-list Tree whose name starts with 'Unread message'. Read-only —
+    does not select/click anything, so it does not mark anything as read."""
+    tree = window.descendants(control_type="Tree")[0]
+    items = tree.descendants(control_type="TreeItem")
+    return [
+        it.window_text() for it in items
+        if it.window_text().startswith("Unread message")
+    ]
+
+
+def select_chat(window, name_substring: str) -> str:
+    """Find the chat-list TreeItem whose name contains name_substring and
+    select it. Raises SystemExit with a clear message (listing candidates,
+    if any) on zero or multiple matches — never guesses."""
+    tree = window.descendants(control_type="Tree")[0]
+    items = tree.descendants(control_type="TreeItem")
+    matches = [it for it in items if name_substring in it.window_text()]
+
+    if not matches:
+        print(f"Error: no chat matched {name_substring!r}", file=sys.stderr)
+        sys.exit(1)
+    if len(matches) > 1:
+        print(f"Error: {name_substring!r} matched multiple chats:", file=sys.stderr)
+        for m in matches:
+            print(f"  - {m.window_text()}", file=sys.stderr)
+        sys.exit(1)
+
+    matched_text = matches[0].window_text()
+    matches[0].select()
+    return matched_text
+
+
+def _wait_for_message_list(window, timeout_seconds: float = 5.0):
+    """Poll for the Message List group to appear after selecting a chat.
+    Bounded wait, per spec — fails loudly rather than retrying forever."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        groups = [
+            g for g in window.descendants(control_type="Group")
+            if g.window_text() == "Message List"
+        ]
+        if groups:
+            return groups[0]
+        time.sleep(0.25)
+    print("Error: Message List did not appear after selecting chat", file=sys.stderr)
+    sys.exit(1)
+
+
+def collect_message_list_nodes(window) -> list:
+    """Select the Message List group, then walk its descendants in
+    document order, returning (control_type, text) tuples for every node
+    with non-empty accessible text."""
+    message_list = _wait_for_message_list(window)
+    nodes = []
+    for ctrl in message_list.descendants():
+        try:
+            text = ctrl.window_text()
+        except Exception:
+            continue
+        if text and text.strip():
+            nodes.append((ctrl.element_info.control_type, text))
+    return nodes
