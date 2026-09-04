@@ -161,7 +161,7 @@ def format_preview_line(record: dict) -> str:
 
 
 _MESSAGE_BOUNDARY_RE = re.compile(r"^.* by (.+)$")
-_MESSAGE_TIMESTAMP_RE = re.compile(r"^(Yesterday|Today) at (AM|PM) \d{1,2}:\d{2}\.$")
+_MESSAGE_TIMESTAMP_RE = re.compile(r"^(Yesterday|Today)(?: at)? (AM|PM) \d{1,2}:\d{2}\.?$")
 _MARKER = ("Button", "More message options")
 _BODY_CONTROL_TYPES = ("Text", "ListItem")
 
