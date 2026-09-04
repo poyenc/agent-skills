@@ -1,25 +1,36 @@
 ---
 name: post-review
 description: >
-  Validate and post inline PR comments from a prior /review output.
-  Spawns a subagent to verify each claim against actual code, drops
-  wrong items, formats confirmed findings as inline comment drafts,
-  and optionally posts them to GitHub. Works with both PR and local
-  branch reviews. Trigger on: "post review", "post comments",
-  "post inline comments", "format review as comments", or "/post-review".
+  Validate and post inline PR comments from a prior /review output, OR from
+  a finished evidence-backed review-report.md (e.g. from a multi-agent PR
+  review process). Spawns a subagent to verify each claim against actual
+  code, drops wrong items, formats confirmed findings as inline comment
+  drafts with GitHub blob-permalink hyperlinks to any referenced source,
+  and optionally posts them to GitHub as one batched review. Works with
+  both PR and local branch reviews. Trigger on: "post review", "post
+  comments", "post inline comments", "format review as comments", "post
+  these findings to the PR", "turn the review report into PR comments", or
+  "/post-review".
 ---
 
 # Post Review
 
-Verify `/review` output, format as inline comment drafts, and optionally post to GitHub.
+Turn review findings — from `/review` output or a review-report.md — into inline PR comments the author can act on quickly, and optionally post them to GitHub.
+
+**Why this exists**: a review is only useful to the extent it saves the author time. Whoever wrote the finding already spent time locating the exact line, understanding the mechanism, and figuring out a fix — a good comment transfers all of that so the author doesn't have to redo the investigation. Treat this as collaborative, not adversarial: the goal is that both the author and the reviewer come away understanding the code better, not just "you got flagged."
 
 ## Prerequisites
 
-This skill expects `/review` output to already be present in the conversation. If not, tell the user to run `/review` or `/review <PR_NUMBER>` first.
+This skill needs a finished set of findings to work from — one of:
+- `/review` output already present in the conversation, or
+- a path to a review-report.md (e.g. produced by an evidence-backed multi-agent review process) with structured findings (problem statement, location, severity/confidence, fix suggestion).
+
+If neither is available, tell the user to run `/review` (or the relevant review process) first.
 
 ## Argument Parsing
 
 Parse the skill arguments to extract:
+- `REPORT_PATH`: path to a review-report.md file (optional — if absent, scan the conversation for `/review` output instead)
 - `PR_NUMBER`: numeric PR number (optional — if absent, operate in local-branch mode)
 
 ## Step 1: Gather Context
@@ -58,7 +69,9 @@ Store: `PR_TITLE`, `HEAD_COMMIT_SHA`, `CHANGED_FILES`, `REPO_OWNER`, `REPO_NAME`
    git diff --name-only $BASE..HEAD
    ```
 
-Store: `PR_TITLE` = current branch name.
+Store: `PR_TITLE` = current branch name, `HEAD_COMMIT_SHA=$(git rev-parse HEAD)`.
+
+Also try to resolve `REPO_OWNER`/`REPO_NAME` even in local mode (needed for hyperlinks — see Comment Style below), e.g. via `gh repo view --json owner,name` or by parsing `git remote get-url origin`. If the repo has no GitHub remote at all, there's nothing to link to — fall back to plain `path:line` text in drafted comments instead of a hyperlink, and skip Step 5 (posting) entirely since there's no PR to post to anyway.
 
 ### Split diff into chunks
 
@@ -66,15 +79,19 @@ Store: `PR_TITLE` = current branch name.
 csplit -z -f {REVIEW_DIR}/chunk- {REVIEW_DIR}/diff.txt '/^diff --git/' '{*}'
 ```
 
-Build a map of `{file_path: chunk_file}` from the first line of each chunk.
+Discard any resulting chunk whose first line doesn't start with `diff --git` (a PR diff can have leading header text before the first real hunk, which `csplit` will capture as its own chunk and which isn't a valid file entry). Build a map of `{file_path: chunk_file}` from the first line of each remaining chunk.
 
 ## Step 2: Extract Review Items
 
-Scan the conversation for the `/review` output. Extract each finding as a structured item:
+**From `/review` output**: scan the conversation for it. Extract each finding as a structured item:
 - File path and line number (if present)
 - Issue description
-- Severity (if present)
+- Severity and confidence (if present — carry both through even if only one is stated)
 - Suggested fix (if present)
+
+**From a review-report.md**: read the file at `{REPORT_PATH}`. Each finding typically already has file/symbol/location, severity/confidence, a problem statement, a causal trace, a fix suggestion, and a verification packet. Pull all of that through rather than summarizing it away — the whole point of that format is to carry enough evidence that this skill's validation step (Step 3) can check it, and that the eventual comment doesn't lose it. Also carry forward the report's reviewed commit SHA as `HEAD_COMMIT_SHA` — a review-report.md always states it explicitly near the top, typically on a line like "Reviewed head commit: `<sha>`"; search for that phrasing first and only fall back to a bare 40-character-hex-string grep if it isn't found, since the file may cite other SHAs too (a base commit, examples) that a plain grep can't distinguish. Note this report's title/identifier too, to use as `PR_TITLE` context for the validation subagent if there's no real PR.
+
+**Line numbers always mean the current (head-commit) file, not the pre-change one.** Whichever source you're extracting from, a finding's cited line is the line in the file *as it exists at the reviewed commit* — Check B in Step 3 re-verifies this by re-reading current source, not a diff. Keep this in mind for Step 5: it's what makes matching against a diff hunk's `+new_start,new_count` range (rather than its `-old_start,old_count` range) the correct comparison.
 
 Collect these into a numbered list: `REVIEW_ITEMS`.
 
@@ -94,91 +111,103 @@ Spawn one subagent (general-purpose) to verify claims:
 > 1. For each finding, read the cited file region (use offset/limit, ~50 lines around the reported line). Verify the claim against the actual code.
 > 2. If a finding references interactions between files, read the relevant regions in both files.
 > 3. Read the diff chunk for context on what changed. Diff chunks: {LIST_OF_CHUNK_FILES_WITH_CORRESPONDING_SOURCE_PATHS}
-> 4. Budget: aim for ≤15 tool calls total.
+> 4. Budget: roughly 2-3 tool calls per finding (a source read plus a diff-chunk read, sometimes a second file for cross-file findings) — scale with {NUMBER_OF_FINDINGS}, don't force a fixed total that gets tighter as findings grow.
 >
-> **YOUR TASK:**
-> For each finding, give a verdict:
+> **YOUR TASK — two separate checks per finding, not one:**
+>
+> **Check A — is the claim TRUE?** Give a verdict:
 > - **Confirmed** — the issue is real and correctly described
 > - **Wrong** — the claim is incorrect; explain why with evidence
 > - **Overstated** — the issue exists but description is exaggerated; explain
 >
-> For confirmed/overstated items, provide:
+> **Check B — is the EVIDENCE good enough to post as-is?** A claim can be true and still not be ready to hand to an author — that's a separate failure mode, and posting an underspecified comment just pushes the investigation work onto the author instead of saving them from it. For every claim that passes Check A, verify all four of:
+> 1. **Location accuracy** — does the cited file/line still point to exactly the described code? (Don't assume the finding is fresh — re-grep/re-read it; line numbers drift.)
+> 2. **Factual accuracy** — does the code snippet / causal trace in the finding still match current source?
+> 3. **Fix completeness** — is the suggested fix concrete enough that the author can apply it directly, with no judgment call or further investigation required? If something is ambiguous or underspecified, say exactly what's missing.
+> 4. **Reproducibility** — could someone reproduce or confirm this finding from what's written, without asking a follow-up question?
+>
+> Mark each claim **Ready** (passes A and B) or **Needs more work** (passes A but fails one or more of B's checks — say which, and what's missing). Only **Ready** items become posted comments; **Needs more work** items get reported back to the user as "confirmed but not comment-ready" rather than silently dropped or posted half-baked.
+>
+> For Ready items, provide:
 > - Exact file:line in the current source
 > - A concise inline comment (2-4 sentences) explaining the issue and showing a fix
 > - Use the comment style below
 >
-> **COMMENT STYLE:**
-> - Explain the *why*, show the *what*
+> **COMMENT STYLE — this is the body text that will eventually be posted for the AUTHOR to read, so it must stand on its own:**
+> - Explain the *why* (the mechanism, not just "this is wrong"), show the *what* — the goal is the author (and you) understanding the code better, not a gotcha
+> - Any reference to a source file/line OTHER than the line this comment is anchored to (another function, a related test, a call site) must be a markdown hyperlink to the GitHub blob permalink at the exact reviewed commit SHA: `[label](https://github.com/{owner}/{repo}/blob/{commit_sha}/{path}#L{line})` (use `#L{start}-L{end}` for a range) — never a bare `file.py:123` reference in posted text. If {REPO_OWNER}/{REPO_NAME} couldn't be resolved (no GitHub remote), fall back to plain `path:line` text instead.
+> - Any code snippet, example, or suggested fix goes in its own fenced code block with a language tag, on its own lines, separated from the explanation by blank lines — never inlined into a sentence
 > - For direct fixes, show a code snippet the author can copy-paste
 > - For conceptual fixes, show before/after key statements
 > - Keep it concise — no walls of text
+> - Do **not** mention severity or confidence inside this body text — those numbers are for the human reviewer's own triage (deciding which findings to post at all), not something the author needs to see. Report them separately, alongside the comment, not inside it.
 >
-> Report verdicts in order. For wrong items, briefly state why so the user knows.
+> Report verdicts in order, including Wrong ones — a claim you disproved with evidence is worth reporting too, not just silently discarding; state briefly why it's wrong so the user knows what was checked. For Needs-more-work items, state exactly what evidence is missing.
 
 ## Step 4: Present Results
 
-After the subagent returns:
+After the subagent returns, every item gets shown to the user in the summary table below — nothing is hidden, including Wrong ones (the user should see what was checked and ruled out, not just what survived). Only the *drafting* step is selective:
 
-1. **Drop** items marked "Wrong".
-2. **Adjust** items marked "Overstated" per the validator's feedback.
-3. **Keep** items marked "Confirmed" as-is.
+1. **Wrong** items: not drafted as comments, but still listed in the summary table with the subagent's reason.
+2. **Overstated** items: use the subagent's adjusted/scoped description, then treat them exactly like a Ready item (draft + list) if they also pass Check B — an overstated-but-corrected claim can still be comment-ready.
+3. **Needs more work** items: not drafted as comments yet. List them with exactly what's missing (per Check B) so the user can decide whether to dig up the missing evidence before posting, or post without it and accept the gap.
+4. **Ready** items (any confidence ≥60%, or every Confirmed/Ready item if the source has no numeric confidence): draft all of them. Don't quietly omit ones you personally judge as minor — severity and confidence are exactly the information the user needs to make that call themselves; deciding it for them defeats the point of surfacing both.
 
 ### Summary Table
 
-First show an overview of what changed and what was kept/dropped:
+Show an overview of everything found, sorted by severity then confidence (highest first) among Ready/Overstated items, before drafting full comments. Severity/confidence are for the user's eyes here — this table, not the eventual GitHub comment:
 
 ```
-| # | Verdict | File:Line | Issue |
-|---|---------|-----------|-------|
+| # | Severity | Confidence | File:Line | Issue | Verdict |
+|---|----------|------------|-----------|-------|---------|
 ```
+
+Verdict is one of: Ready, Needs more work (+ what's missing), Wrong (+ why). Include every item the subagent evaluated, Wrong ones included — this table is the user's full decision surface, not a pre-filtered shortlist.
 
 ### Inline Comment Drafts
 
-For each confirmed/overstated item, show the draft:
+For each Ready/Overstated-and-passing item, show the draft. The `[Severity, Confidence%]` tag here is for the user's triage view only — it does **not** belong in the comment body itself (see Step 5):
 
 ```
-**#N** — on `file/path.hpp:123`:
+**#N** — [Severity, Confidence%] on `file/path.hpp:123`:
 ​```cpp
 the code line this comment attaches to
 ​```
 
-> Comment text with fix suggestion
+> Comment text with fix suggestion (no severity/confidence inside this part — that's what actually gets posted)
 ```
 
 All inline comments use normal fenced code blocks. NEVER use GitHub `suggestion` blocks.
 
 After presenting all drafts, ask in plain text (do NOT use AskUserQuestion):
 
-"Want me to post these as inline comments to the PR? You can also ask me to edit or drop specific items."
+"Here are all N findings ≥60% confidence, with severity/confidence shown above — which do you want posted? Say 'all' or list the ones you want (e.g. '1, 3, 4'). You can also ask me to edit specific ones first."
 
 Wait for the user to respond before proceeding.
 
 ## Step 5: Post to GitHub (if approved)
 
-Only for PR mode. Only if user approved.
+Only for PR mode (there's no PR to post to in local mode — presenting drafts is as far as that path goes). Only for the specific items the user approved in Step 4, not automatically everything drafted.
 
-1. Compute the exact new-file line number for each comment by parsing diff hunks in `{REVIEW_DIR}/diff.txt`. For each item:
-   - Find the hunk containing the target file and line
-   - Count non-minus lines from the hunk start to determine the new-file line number
+Strip the `[Severity, Confidence%]` triage tag before building each comment's `body` below — that tag was for the user's decision-making in Step 4, not for the author to see.
 
-2. Compute GitHub diff anchors:
-   ```bash
-   echo -n "path/to/file.hpp" | sha256sum | cut -c1-64
-   ```
+1. For each approved comment, confirm its line is actually part of the diff. The GitHub Reviews API (`line` + `side: "RIGHT"`) wants the 1-based line number in the file *as of the head commit* — not a v3-style diff "position" offset, and (per the head-commit note in Step 2) the same number the finding already cites, with no arithmetic needed. What you're checking for is coverage, not conversion: scan the hunk headers (`@@ -old_start,old_count +new_start,new_count @@`) in `{REVIEW_DIR}/diff.txt` for the target file, and check whether the cited line falls within some hunk's **`+new_start,new_count`** range (the new-file side — not `-old_start,old_count`, which describes the pre-change file and isn't what the finding's line number refers to). If it falls within a hunk's new-file range, pass that line number to the API directly. If it doesn't — the finding is about an unchanged line the PR diff doesn't touch — GitHub will reject an inline comment there with a 422, so fold that finding into the top-level review `body` instead: append it as its own short paragraph (file/line reference plus the comment text) rather than overwriting previous folded findings, since more than one item can end up here.
 
-3. Build the review JSON and save to `{REVIEW_DIR}/post.json`:
+2. If zero items were approved/Ready, stop here and tell the user "no items ready to post" rather than posting an empty review.
+
+3. Build the review JSON and save to `{REVIEW_DIR}/post.json`. Make `body` reflect the actual source (don't hardcode "/review" — say what was actually validated), and append any folded (non-inline) findings from step 1 here:
 
 ```json
 {
   "commit_id": "{HEAD_COMMIT_SHA}",
   "event": "COMMENT",
-  "body": "Code review — suggestions from `/review` validation.",
+  "body": "Code review — validated findings from {SOURCE_NAME} ({N} comments).",
   "comments": [
     {
       "path": "path/to/file.hpp",
       "line": 123,
       "side": "RIGHT",
-      "body": "Comment text with fenced code blocks"
+      "body": "Comment text with fenced code blocks, no severity/confidence tag"
     }
   ]
 }
