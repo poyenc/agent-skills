@@ -85,6 +85,12 @@ def test_resolve_timestamp_month_day():
     assert tu.resolve_timestamp("9/3", now) == "2026-09-03"
 
 
+def test_resolve_timestamp_absolute_date_time():
+    now = dt.datetime(2026, 9, 5, 15, 0, 0)
+    assert tu.resolve_timestamp("2026 9 3 AM 11:03", now) == "2026-09-03T11:03:00"
+    assert tu.resolve_timestamp("2026 9 3 PM 6:18", now) == "2026-09-03T18:18:00"
+
+
 def test_resolve_timestamp_unrecognized_raises():
     now = dt.datetime(2026, 9, 4, 15, 0, 0)
     with pytest.raises(ValueError):
@@ -209,6 +215,24 @@ def test_group_into_messages_multiline_body_with_list_items():
     messages = tu.group_into_messages(nodes)
     assert len(messages) == 1
     assert messages[0]["body"] == "intro line one first point second point"
+
+
+def test_group_into_messages_absolute_date_form():
+    nodes = [
+        ("Text", "on it by Eve Example"),
+        ("Text", "2026 9 3 AM 11:03."),
+        ("Text", "Thursday AM 11:03"),
+        ("Text", "Eve Example"),
+        ("Group", "Eve Example on it 2026 9 3 AM 11:03."),
+        ("Button", "More message options"),
+        ("Group", "on it"),
+        ("Text", "on it"),
+    ]
+    messages = tu.group_into_messages(nodes)
+    assert len(messages) == 1
+    assert messages[0]["sender"] == "Eve Example"
+    assert messages[0]["body"] == "on it"
+    assert messages[0]["timestamp_raw"] == "2026 9 3 AM 11:03"
 
 
 def test_truncate_to_last_n_keeps_most_recent_n_oldest_first():

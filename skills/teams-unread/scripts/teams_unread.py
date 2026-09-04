@@ -106,6 +106,11 @@ _BARE_TIME_RE = re.compile(r"^(AM|PM) (\d{1,2}):(\d{2})$")
 _YESTERDAY_RE = re.compile(r"^Yesterday(?: at)? (AM|PM) (\d{1,2}):(\d{2})\.?$")
 _TODAY_RE = re.compile(r"^Today(?: at)? (AM|PM) (\d{1,2}):(\d{2})\.?$")
 _MONTH_DAY_RE = re.compile(r"^(\d{1,2})/(\d{1,2})$")
+# Message-list timestamps for messages older than yesterday appear as an
+# unambiguous "YYYY M D AM/PM H:MM" form (space-separated, no slashes) —
+# this is preferred over Teams' bare weekday-name duplicate ("Thursday
+# AM 11:03") since it needs no day-of-week arithmetic relative to `now`.
+_ABSOLUTE_DATE_TIME_RE = re.compile(r"^(\d{4}) (\d{1,2}) (\d{1,2}) (AM|PM) (\d{1,2}):(\d{2})$")
 
 
 def _combine_date_and_ampm_time(date, ampm: str, hour: str, minute: str) -> str:
@@ -139,6 +144,12 @@ def resolve_timestamp(raw: str, now: dt.datetime) -> str:
         month, day = int(m.group(1)), int(m.group(2))
         return dt.date(now.year, month, day).isoformat()
 
+    m = _ABSOLUTE_DATE_TIME_RE.match(raw)
+    if m:
+        year, month, day, ampm, hour, minute = m.groups()
+        date = dt.date(int(year), int(month), int(day))
+        return _combine_date_and_ampm_time(date, ampm, hour, minute)
+
     raise ValueError(f"Unrecognized timestamp format: {raw!r}")
 
 
@@ -171,6 +182,9 @@ _MESSAGE_BOUNDARY_RE = re.compile(r"^.* by (.+)$")
 # (no "at", no period) for the same message; both "at" and the trailing
 # period are optional here to tolerate either form.
 _MESSAGE_TIMESTAMP_RE = re.compile(r"^(Yesterday|Today)(?: at)? (AM|PM) \d{1,2}:\d{2}\.?$")
+# Companion to _ABSOLUTE_DATE_TIME_RE (resolve_timestamp): matches the same
+# "YYYY M D AM/PM H:MM" node as it appears here, with its trailing period.
+_MESSAGE_ABSOLUTE_DATE_RE = re.compile(r"^\d{4} \d{1,2} \d{1,2} (AM|PM) \d{1,2}:\d{2}\.$")
 _MARKER = ("Button", "More message options")
 _BODY_CONTROL_TYPES = ("Text", "ListItem")
 
@@ -206,7 +220,9 @@ def _parse_message_span(span: list) -> dict:
             continue
 
         if not seen_marker:
-            if not timestamp_raw and _MESSAGE_TIMESTAMP_RE.match(text):
+            if not timestamp_raw and (
+                _MESSAGE_TIMESTAMP_RE.match(text) or _MESSAGE_ABSOLUTE_DATE_RE.match(text)
+            ):
                 timestamp_raw = text.rstrip(".")
             elif text == "Edited":
                 edited = True
@@ -252,7 +268,13 @@ def get_teams_window():
     Teams isn't running or the window can't be found."""
     try:
         app = Desktop(backend="uia")
-        return app.window(title_re=".*Microsoft Teams$")
+        # visible_only=False: pywinauto's visibility check can consider the
+        # Teams window "not visible" when it's occluded/not foreground, even
+        # though it's a real, running window we can still read from.
+        # .wrapper_object() forces resolution now so lookup failures raise
+        # here, inside this try block, instead of surfacing later at the
+        # first attribute access on a lazy, unresolved WindowSpecification.
+        return app.window(title_re=".*Microsoft Teams$", visible_only=False).wrapper_object()
     except Exception as exc:  # pywinauto raises varied COM/UIA exceptions; catch broadly
         print(f"Error: could not find Teams window ({exc})", file=sys.stderr)
         sys.exit(1)
@@ -379,6 +401,16 @@ def _positive_int(value: str) -> int:
 
 
 def main() -> None:
+    # Windows consoles often default stdout/stderr to cp1252, which can't
+    # encode emoji/CJK/other characters that show up in real chat content
+    # (including in error messages, e.g. select_chat's multi-match candidate
+    # list). Force UTF-8 on both streams so output doesn't crash or mangle
+    # on ordinary messages.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(
         description="List/retrieve unread Microsoft Teams chats via UI Automation"
     )
