@@ -8,7 +8,9 @@ Windows-only. Requires pywinauto and a running Teams desktop app.
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
+import json
 import re
 import sys
 import time
@@ -322,10 +324,6 @@ def collect_message_list_nodes(window) -> list:
         if text and text.strip():
             nodes.append((ctrl.element_info.control_type, text))
     return nodes
-
-
-import argparse
-import json
 
 
 def run_preview(args) -> None:
