@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -35,7 +36,6 @@ def test_parse_chat_item_meeting_chat_no_muted_no_pinned():
 
 
 def test_parse_chat_item_unrecognized_raises():
-    import pytest
     with pytest.raises(ValueError):
         tu.parse_chat_item("Some completely different string")
 
