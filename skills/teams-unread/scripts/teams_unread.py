@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import sys
+import time
+
+from pywinauto import Desktop
 
 _PRESENCE_VALUES = (
     "Available",
@@ -241,19 +245,13 @@ def format_retrieve_line(message: dict) -> str:
     )
 
 
-import sys
-import time
-
-from pywinauto import Desktop
-
-
 def get_teams_window():
     """Locate the Teams desktop main window. Exits with a clear error if
     Teams isn't running or the window can't be found."""
     try:
         app = Desktop(backend="uia")
         return app.window(title_re=".*Microsoft Teams$")
-    except Exception as exc:  # pywinauto raises various ElementNotFoundError subtypes
+    except Exception as exc:  # pywinauto raises varied COM/UIA exceptions; catch broadly
         print(f"Error: could not find Teams window ({exc})", file=sys.stderr)
         sys.exit(1)
 
@@ -264,10 +262,12 @@ def collect_unread_chat_items(window) -> list:
     does not select/click anything, so it does not mark anything as read."""
     tree = window.descendants(control_type="Tree")[0]
     items = tree.descendants(control_type="TreeItem")
-    return [
-        it.window_text() for it in items
-        if it.window_text().startswith("Unread message")
-    ]
+    results = []
+    for it in items:
+        text = it.window_text()
+        if text.startswith("Unread message"):
+            results.append(text)
+    return results
 
 
 def select_chat(window, name_substring: str) -> str:
@@ -309,7 +309,7 @@ def _wait_for_message_list(window, timeout_seconds: float = 5.0):
 
 
 def collect_message_list_nodes(window) -> list:
-    """Select the Message List group, then walk its descendants in
+    """Wait for the Message List group to appear, then walk its descendants in
     document order, returning (control_type, text) tuples for every node
     with non-empty accessible text."""
     message_list = _wait_for_message_list(window)
