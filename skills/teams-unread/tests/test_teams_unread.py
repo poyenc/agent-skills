@@ -141,3 +141,71 @@ def test_format_preview_line_is_single_line_and_greppable():
     assert "Muted" in line
     assert "Alice Example" in line
     assert "hi" in line
+
+
+def test_group_into_messages_simple_two_messages():
+    nodes = [
+        ("Text", "hello there by Alice Example"),
+        ("Text", "Today at AM 09:00."),
+        ("Text", "Today AM 09:00"),
+        ("Text", "Alice Example"),
+        ("Group", "Alice Example hello there Today at AM 09:00."),
+        ("Button", "More message options"),
+        ("Group", "hello there"),
+        ("Text", "hello there"),
+        ("Text", "got it, thanks by Bob Example"),
+        ("Text", "Today at AM 09:05."),
+        ("Text", "Today AM 09:05"),
+        ("Text", "Bob Example"),
+        ("Group", "Bob Example got it, thanks Today at AM 09:05."),
+        ("Button", "More message options"),
+        ("Group", "got it, thanks"),
+        ("Text", "got it, thanks"),
+    ]
+    messages = tu.group_into_messages(nodes)
+    assert len(messages) == 2
+    assert messages[0]["sender"] == "Alice Example"
+    assert messages[0]["body"] == "hello there"
+    assert messages[0]["timestamp_raw"] == "Today at AM 09:00"
+    assert messages[0]["edited"] is False
+    assert messages[0]["has_attachment"] is False
+    assert messages[1]["sender"] == "Bob Example"
+    assert messages[1]["body"] == "got it, thanks"
+
+
+def test_group_into_messages_edited_and_attachment():
+    nodes = [
+        ("Text", "sent a file by Carol Example"),
+        ("Text", "Yesterday at PM 03:00."),
+        ("Text", "Yesterday PM 03:00"),
+        ("Text", "Edited"),
+        ("Text", "Carol Example"),
+        ("Group", "Carol Example The message has an attachment. Yesterday at PM 03:00. Edited"),
+        ("Button", "More message options"),
+        ("Group", "The message has an attachment."),
+        ("Text", "The message has an attachment."),
+    ]
+    messages = tu.group_into_messages(nodes)
+    assert len(messages) == 1
+    assert messages[0]["sender"] == "Carol Example"
+    assert messages[0]["edited"] is True
+    assert messages[0]["has_attachment"] is True
+    assert messages[0]["timestamp_raw"] == "Yesterday at PM 03:00"
+
+
+def test_group_into_messages_multiline_body_with_list_items():
+    nodes = [
+        ("Text", "intro by Dave Example"),
+        ("Text", "Today at AM 11:00."),
+        ("Text", "Today AM 11:00"),
+        ("Text", "Dave Example"),
+        ("Group", "Dave Example intro Today at AM 11:00."),
+        ("Button", "More message options"),
+        ("Group", "intro line one"),
+        ("Text", "intro line one"),
+        ("ListItem", "first point"),
+        ("ListItem", "second point"),
+    ]
+    messages = tu.group_into_messages(nodes)
+    assert len(messages) == 1
+    assert messages[0]["body"] == "intro line one first point second point"

@@ -158,3 +158,63 @@ def format_preview_line(record: dict) -> str:
         f"{record['timestamp_iso']}\t{record['chat_type']}\t{record['name']}\t"
         f"{flags_str}\t{sender}: {record['last_message']}"
     )
+
+
+_MESSAGE_BOUNDARY_RE = re.compile(r"^.* by (.+)$")
+_MESSAGE_TIMESTAMP_RE = re.compile(r"^(Yesterday|Today) at (AM|PM) \d{1,2}:\d{2}\.$")
+_MARKER = ("Button", "More message options")
+_BODY_CONTROL_TYPES = ("Text", "ListItem")
+
+
+def group_into_messages(nodes: list) -> list:
+    """Segment a flat, document-order list of (control_type, text) tuples
+    from the Message List UIA subtree into one record per message.
+
+    Message boundaries are detected via the first line of each message
+    block, which is always shaped like "<preview...> by <sender>"."""
+    boundaries = [
+        i for i, (ctype, text) in enumerate(nodes)
+        if ctype == "Text" and _MESSAGE_BOUNDARY_RE.match(text)
+    ]
+    messages = []
+    for idx, start in enumerate(boundaries):
+        end = boundaries[idx + 1] if idx + 1 < len(boundaries) else len(nodes)
+        messages.append(_parse_message_span(nodes[start:end]))
+    return messages
+
+
+def _parse_message_span(span: list) -> dict:
+    sender = _MESSAGE_BOUNDARY_RE.match(span[0][1]).group(1)
+    timestamp_raw = ""
+    edited = False
+    has_attachment = False
+    body_parts: list = []
+    seen_marker = False
+
+    for ctype, text in span:
+        if (ctype, text) == _MARKER:
+            seen_marker = True
+            continue
+
+        if not seen_marker:
+            if not timestamp_raw and _MESSAGE_TIMESTAMP_RE.match(text):
+                timestamp_raw = text.rstrip(".")
+            elif text == "Edited":
+                edited = True
+            elif "has an attachment" in text:
+                has_attachment = True
+            continue
+
+        if "has an attachment" in text:
+            has_attachment = True
+            continue
+        if ctype in _BODY_CONTROL_TYPES and text and text not in body_parts:
+            body_parts.append(text)
+
+    return {
+        "sender": sender,
+        "body": " ".join(body_parts),
+        "timestamp_raw": timestamp_raw,
+        "edited": edited,
+        "has_attachment": has_attachment,
+    }
