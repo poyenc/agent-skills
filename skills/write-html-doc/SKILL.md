@@ -28,8 +28,10 @@ a system-monospace fallback), a 220px sticky left sidebar table-of-contents that
 the section you're reading, a comfortable reading measure, and a small kit of components —
 header block, sections, tables (including a compact "matrix" grid), status marks in
 green/red/amber, classification chips, "pillar" callouts, and monospace ASCII diagrams.
-There are deliberately **no charts, no images, no JS beyond the scroll-spy, and no dark
-theme** — structure is carried by tables and callouts.
+There are deliberately **no charts, no images, and no dark theme** — structure is carried by
+tables and callouts. JS is limited to navigation aids only (the scroll-spy, and — when a table
+warrants it — the synced top-scrollbar/sticky-column pattern in `references/components.md`),
+never charting or data logic.
 
 ## Inputs
 
@@ -72,6 +74,9 @@ Two modes, detected from the request:
      wires itself up automatically).
    - `references/example.html` is a small worked example in the finished style — skim it if
      you want to see the components used together.
+   - If a table is wider than the viewport or long enough to scroll past its header, add the
+     sticky identity column and scroll aids from `references/components.md`'s "Scroll aids
+     for wide/long tables" — see that section for when these are warranted vs. unnecessary.
 
 5. **Verify before declaring done.** Open your reasoning to these checks, because they are
    the usual failure modes:
@@ -79,7 +84,16 @@ Two modes, detected from the request:
    - Literal `<`, `>`, `&` in content (e.g. C++ templates, HTML snippets) are escaped.
    - Every fact, number, and file:line citation from the source is preserved exactly — this
      style is used for source-verified docs, so a dropped or altered value is a real defect.
-   - It's a single self-contained file (only external dependency is the Google Fonts link).
+   - Every file/line citation is a commit-pinned clickable link, not bare text — see
+     `references/components.md`'s "Citations, terminology, and audience".
+   - If the doc is for an external/outside audience, grep it for local absolute paths,
+     working-file names, and links into scratch/internal-only branches — same section.
+   - Every technical term used matches the domain's/source's own vocabulary — no invented
+     labels or shorthands.
+   - If any rename or terminology fix was requested, grep the whole doc to confirm no old
+     form of the term remains, including in headers/titles.
+   - It's a single self-contained file (only external dependency is the Google Fonts link,
+     plus the tiny inline script for scroll aids if used).
    Then report the written path.
 
 ## Adapting the style

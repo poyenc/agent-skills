@@ -12,11 +12,13 @@ from the same hand. If a piece of content has no matching component here, prefer
 - [Sections and the TOC](#sections-and-the-toc)
 - [Text: paragraphs, lists, captions](#text-paragraphs-lists-captions)
 - [Tables (normal and matrix)](#tables-normal-and-matrix)
+- [Scroll aids for wide/long tables](#scroll-aids-for-widelong-tables)
 - [Status marks and chips](#status-marks-and-chips)
 - [Pillar callout](#pillar-callout)
 - [ASCII diagram block](#ascii-diagram-block)
 - [Footer](#footer)
 - [Editorialize vs faithful](#editorialize-vs-faithful)
+- [Citations, terminology, and audience](#citations-terminology-and-audience)
 - [Escaping and correctness](#escaping-and-correctness)
 
 ---
@@ -135,6 +137,72 @@ Matrix table — for a feature × option grid with compact centered status cells
 </table></div>
 ```
 
+For a matrix table wider than the viewport (many status columns — e.g. comparing 4+ variants),
+freeze the identity column so the reader never loses row context while scrolling sideways:
+
+```css
+.sticky-col{position:sticky;left:0;z-index:2;background:var(--paper);box-shadow:1px 0 0 0 var(--rule-strong);}
+tbody tr:hover td.sticky-col{background:var(--code-bg);}
+th.sticky-col{z-index:3;}
+```
+
+Apply `sticky-col` alongside `feat` (or `k` for a normal table's leading column) on both the
+`<td>` in every row and the matching `<th>` in `<thead>` (and `<tfoot>`, see below). When a
+row name is itself a defined entity backed by a source (a parameter, an API, a spec item),
+hyperlink the row label to that definition — not just the citations elsewhere in the row — so
+a skimming reader can jump straight to ground truth.
+
+## Scroll aids for wide/long tables
+
+A native horizontal scrollbar sits at the bottom of a table's viewport — useless on a long
+table, since reaching it means scrolling past every row first. For any table wide enough to
+need horizontal scrolling, add a synced scroll strip above it and wire it up with a small
+script (this is the one exception to "no JS beyond the scroll-spy" — it's still pure
+navigation, no charting or data logic):
+
+```css
+.tbl-scroll-top{overflow-x:auto;overflow-y:hidden;height:14px;margin:1.6rem 0 0;}
+.tbl-scroll-top > div{height:1px;}
+.tbl-wrap{overflow-x:auto;margin:0.4rem 0 1.6rem;} /* tighten the top margin to sit right under the scroll strip */
+```
+
+```js
+document.querySelectorAll('.tbl-wrap').forEach(function (wrap) {
+  var table = wrap.querySelector('table');
+  var topScroller = document.createElement('div');
+  topScroller.className = 'tbl-scroll-top';
+  var spacer = document.createElement('div');
+  topScroller.appendChild(spacer);
+  wrap.parentNode.insertBefore(topScroller, wrap);
+  var syncing = false;
+  function sync() { spacer.style.width = table.scrollWidth + 'px'; }
+  sync();
+  window.addEventListener('resize', sync);
+  topScroller.addEventListener('scroll', function () {
+    if (syncing) return; syncing = true; wrap.scrollLeft = topScroller.scrollLeft; syncing = false;
+  });
+  wrap.addEventListener('scroll', function () {
+    if (syncing) return; syncing = true; topScroller.scrollLeft = wrap.scrollLeft; syncing = false;
+  });
+});
+```
+
+For a table long enough that its `<thead>` scrolls off-screen, repeat the header row as a
+`<tfoot>` — same cells, styled with a top divider instead of a bottom one, so column identity
+survives scrolling to the end:
+
+```css
+tfoot th{border-bottom:none;border-top:1px solid var(--rule-strong);}
+```
+
+```html
+<tfoot><tr><th class="feat sticky-col">Feature</th><th class="c">A</th></tr></tfoot>
+```
+
+Both aids are opt-in, layered on top of the base `.tbl-wrap`/`table`/`table.matrix` components
+above — add them when a table is wide or long enough that the reader would otherwise lose
+context, not by default on every table.
+
 ## Status marks and chips
 
 Status colors (use inside table cells or inline text): `yes` (green), `no` (red),
@@ -236,6 +304,36 @@ if the source doesn't support a chip/pillar, use plain text.
   in the source. If the source literally contains ✓/✗, you may still apply the status
   colors, since that's presentation of an existing mark, not new editorial content.
 Choose this for correctness-critical documents where added interpretation is a liability.
+
+## Citations, terminology, and audience
+
+These apply whenever the source material makes verifiable technical claims — a research
+report, an evidence-backed review, a feature/spec comparison:
+
+- **When citing a version-controlled source, link every file/line citation, pinned to a
+  commit.** This applies only when the doc's claims are backed by facts in a git-hosted
+  codebase — it doesn't apply to specs, policy docs, meeting notes, or other technical docs
+  with no repo behind them. When it does apply: resolve the citing repo's current commit and
+  turn every `path/to/file.ext:123` (or bare filename) mention into a line-addressable
+  permalink for whatever host is in use — GitHub's `blob/<sha>/path#L123`, GitLab's
+  equivalent, or the host's native line-anchor scheme — for every occurrence, not just the
+  first. A file or function that doesn't exist yet (proposed/future work) stays plain text;
+  there's nothing on the other end to verify.
+- **Use the domain's own terms — never invent a label.** Describe a parameter, mechanism, or
+  component by the name the source actually uses for it, not a coined shorthand, nickname, or
+  abbreviation. An invented term can't be grepped back to source and forces the reader to
+  guess the mapping themselves.
+- **Scrub local/scratch references before treating a doc as external-facing.** When the user
+  says "for outside readers" or the doc will leave the authoring machine/session, grep the
+  draft for local absolute paths (`~/`, `/home/`, `/Users/`), working-file names (ledgers,
+  scratch notes, internal task/process docs), and links into internal-only or scratch
+  branches. Replace with plain prose or a canonical link into the actual product source —
+  never a path or link only the author's environment can resolve.
+- **A rename/terminology-fix request means a full sweep, verified.** When told to replace a
+  placeholder or fix a term, grep the whole document for every form of the old term before
+  declaring done — don't rely on remembering where it appeared. This includes headers and
+  section titles that used the placeholder as a proper noun, not just the spot the user
+  pointed at.
 
 ## Escaping and correctness
 
