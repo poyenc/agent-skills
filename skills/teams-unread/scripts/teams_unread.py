@@ -322,3 +322,88 @@ def collect_message_list_nodes(window) -> list:
         if text and text.strip():
             nodes.append((ctrl.element_info.control_type, text))
     return nodes
+
+
+import argparse
+import json
+
+
+def run_preview(args) -> None:
+    window = get_teams_window()
+    raw_items = collect_unread_chat_items(window)
+
+    records = []
+    for raw in raw_items:
+        try:
+            record = parse_chat_item(raw)
+            record["timestamp_iso"] = resolve_timestamp(record["timestamp_raw"], dt.datetime.now())
+        except ValueError as exc:
+            print(f"warning: skipping unparseable chat item: {exc}", file=sys.stderr)
+            continue
+        records.append(record)
+
+    records = filter_muted(records, exclude_muted=args.exclude_muted)
+    records = sort_records_newest_first(records)
+
+    if args.json:
+        print(json.dumps(records, indent=2, ensure_ascii=False))
+    else:
+        for r in records:
+            print(format_preview_line(r))
+
+
+def run_retrieve(args) -> None:
+    window = get_teams_window()
+    select_chat(window, args.chat)
+    nodes = collect_message_list_nodes(window)
+    messages = group_into_messages(nodes)
+
+    for m in messages:
+        m["timestamp_iso"] = (
+            resolve_timestamp(m["timestamp_raw"], dt.datetime.now())
+            if m["timestamp_raw"] else ""
+        )
+
+    messages = truncate_to_last_n(messages, args.last)
+
+    if args.json:
+        print(json.dumps(messages, indent=2, ensure_ascii=False))
+    else:
+        for m in messages:
+            print(format_retrieve_line(m))
+
+
+def _positive_int(value: str) -> int:
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"--last must be a positive integer, got {value}")
+    return n
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="List/retrieve unread Microsoft Teams chats via UI Automation"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_preview = sub.add_parser("preview", help="List unread 1:1/group chats (read-only)")
+    p_preview.add_argument("--json", action="store_true")
+    p_preview.add_argument("--exclude-muted", action="store_true")
+
+    p_retrieve = sub.add_parser(
+        "retrieve", help="Open a chat and pull recent messages (marks it read)"
+    )
+    p_retrieve.add_argument("--chat", required=True, help="Substring to match a chat name")
+    p_retrieve.add_argument("--last", type=_positive_int, default=20, help="Max messages to return")
+    p_retrieve.add_argument("--json", action="store_true")
+
+    args = parser.parse_args()
+
+    if args.command == "preview":
+        run_preview(args)
+    else:
+        run_retrieve(args)
+
+
+if __name__ == "__main__":
+    main()
