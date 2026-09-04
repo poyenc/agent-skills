@@ -90,6 +90,6 @@ def parse_chat_item(raw: str) -> dict:
         "muted": muted,
         "unread": unread,
         "last_sender": last_sender,
-        "last_message": last_message,
+        "last_message": last_message.strip(),
         "timestamp_raw": timestamp_raw,
     }
