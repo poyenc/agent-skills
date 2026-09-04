@@ -137,11 +137,13 @@ Spawn one subagent (general-purpose) to verify claims:
 > **COMMENT STYLE — this is the body text that will eventually be posted for the AUTHOR to read, so it must stand on its own:**
 > - Explain the *why* (the mechanism, not just "this is wrong"), show the *what* — the goal is the author (and you) understanding the code better, not a gotcha
 > - Any reference to a source file/line OTHER than the line this comment is anchored to (another function, a related test, a call site) must be a markdown hyperlink to the GitHub blob permalink at the exact reviewed commit SHA: `[label](https://github.com/{owner}/{repo}/blob/{commit_sha}/{path}#L{line})` (use `#L{start}-L{end}` for a range) — never a bare `file.py:123` reference in posted text. If {REPO_OWNER}/{REPO_NAME} couldn't be resolved (no GitHub remote), fall back to plain `path:line` text instead.
-> - Any code snippet, example, or suggested fix goes in its own fenced code block with a language tag, on its own lines, separated from the explanation by blank lines — never inlined into a sentence
+> - The link's visible `label` should name what a reader actually cares about, not force them to decode a path/line first: if the target is a specific function, method, or class, use its identifier as the label (`` [`_is_mode_write()`](...) ``, `` [`FooClass`](...) ``) — the reader sees what code is being pointed at immediately, and the exact location is one click away rather than something they have to hold in their head. Fall back to `path:line` as the label only when there's no single named construct to point to (e.g. a bare import line, a block of statements).
+> - Any code snippet, example, suggested fix, or **command** (a shell command, `grep` invocation, test command — anything that's a literal command rather than natural sentence text) goes in its own fenced code block with a language tag, on its own lines, separated from the explanation by blank lines — never inlined into a sentence like `` "confirmed via `grep -rn ...`" ``. The rule isn't specific to "code" narrowly — it's that anything not meant to read as prose gets set apart, so the reader's eye can tell at a glance what to read versus what to run/copy.
 > - For direct fixes, show a code snippet the author can copy-paste
 > - For conceptual fixes, show before/after key statements
 > - Keep it concise — no walls of text
 > - Do **not** mention severity or confidence inside this body text — those numbers are for the human reviewer's own triage (deciding which findings to post at all), not something the author needs to see. Report them separately, alongside the comment, not inside it.
+> - This is a review comment, not a message to the author — avoid reply-style or conversational framing (e.g. "Re:", "FYI", "Just noting"). Never use an abbreviation unless it's a well-known domain term already used in this repository; spell things out.
 >
 > Report verdicts in order, including Wrong ones — a claim you disproved with evidence is worth reporting too, not just silently discarding; state briefly why it's wrong so the user knows what was checked. For Needs-more-work items, state exactly what evidence is missing.
 
@@ -211,10 +213,10 @@ gh api repos/{REPO_OWNER}/{REPO_NAME}/pulls/{PR_NUMBER}/comments --input {REVIEW
 ```
 Each call like this is immediately visible to the author on its own — it is not held in a draft or pending state waiting on a separate submit step, so only run it once you actually intend that comment to go live.
 
-3b. **If the line is not diff-covered** (an unchanged line the PR doesn't touch — GitHub would reject an inline comment there with a 422) — post it as a standalone PR comment instead. The drafted body from Step 4 was written assuming an inline anchor (it doesn't name its own location), so prepend an explicit self-referencing hyperlink line before it — this is the one piece of rewiring a standalone comment needs that an inline one doesn't:
+3b. **If the line is not diff-covered** (an unchanged line the PR doesn't touch — GitHub would reject an inline comment there with a 422) — post it as a standalone PR comment instead. The drafted body from Step 4 was written assuming an inline anchor (it doesn't name its own location), so prepend an explicit self-referencing hyperlink line before it — this is the one piece of rewiring a standalone comment needs that an inline one doesn't. This is a review comment, not a message to the author, so state the location plainly (e.g. "Location:") rather than in a reply-style framing like "Re:", and don't abbreviate. Use the same label rule as any other hyperlink in this skill: name the function/method/class if there is one (`` [`function_name()`](...) ``), falling back to `path:line` only when there's no single named construct:
 ```bash
 cat > {REVIEW_DIR}/comment-{N}.md << 'EOF'
-**Re: [`path/to/file.hpp:123`](https://github.com/{owner}/{repo}/blob/{commit_sha}/path/to/file.hpp#L123)**
+**Location:** [`function_name()`](https://github.com/{owner}/{repo}/blob/{commit_sha}/path/to/file.hpp#L123)
 
 Comment text with fenced code blocks, no severity/confidence tag
 EOF
