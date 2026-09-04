@@ -5,8 +5,8 @@ description: >
   history from a specific chat, by reading the Teams desktop app's
   accessibility tree. Use this skill when the user asks: "check unread
   Teams messages", "any unread chats", "what's new in Teams", "show me
-  my Teams chat with X", "read the CK Asia chat", or similar. Requires
-  the Teams desktop app to be running on Windows.
+  my Teams chat with X", "read the <chat name> chat", or similar.
+  Requires the Teams desktop app to be running on Windows.
 ---
 
 # Teams Unread
