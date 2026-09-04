@@ -134,3 +134,27 @@ def resolve_timestamp(raw: str, now: dt.datetime) -> str:
         return dt.date(now.year, month, day).isoformat()
 
     raise ValueError(f"Unrecognized timestamp format: {raw!r}")
+
+
+def filter_muted(records: list, exclude_muted: bool) -> list:
+    if not exclude_muted:
+        return records
+    return [r for r in records if not r["muted"]]
+
+
+def sort_records_newest_first(records: list) -> list:
+    return sorted(records, key=lambda r: r["timestamp_iso"], reverse=True)
+
+
+def format_preview_line(record: dict) -> str:
+    flags = []
+    if record["pinned"]:
+        flags.append("Pinned")
+    if record["muted"]:
+        flags.append("Muted")
+    flags_str = ",".join(flags) if flags else "-"
+    sender = record["last_sender"] or "(unknown)"
+    return (
+        f"{record['timestamp_iso']}\t{record['chat_type']}\t{record['name']}\t"
+        f"{flags_str}\t{sender}: {record['last_message']}"
+    )

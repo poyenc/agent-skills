@@ -89,3 +89,55 @@ def test_resolve_timestamp_unrecognized_raises():
     now = dt.datetime(2026, 9, 4, 15, 0, 0)
     with pytest.raises(ValueError):
         tu.resolve_timestamp("not a timestamp", now)
+
+
+def _sample_record(name, timestamp_iso, muted=False):
+    return {
+        "chat_type": "Chat",
+        "name": name,
+        "presence": "Away",
+        "pinned": False,
+        "muted": muted,
+        "unread": True,
+        "last_sender": "Alice Example",
+        "last_message": "hi",
+        "timestamp_raw": "AM 10:00",
+        "timestamp_iso": timestamp_iso,
+    }
+
+
+def test_filter_muted_excludes_when_requested():
+    records = [
+        _sample_record("A", "2026-09-04T10:00:00", muted=True),
+        _sample_record("B", "2026-09-04T11:00:00", muted=False),
+    ]
+    result = tu.filter_muted(records, exclude_muted=True)
+    assert [r["name"] for r in result] == ["B"]
+
+
+def test_filter_muted_keeps_all_when_not_requested():
+    records = [
+        _sample_record("A", "2026-09-04T10:00:00", muted=True),
+        _sample_record("B", "2026-09-04T11:00:00", muted=False),
+    ]
+    result = tu.filter_muted(records, exclude_muted=False)
+    assert [r["name"] for r in result] == ["A", "B"]
+
+
+def test_sort_records_newest_first():
+    records = [
+        _sample_record("Older", "2026-09-03T10:00:00"),
+        _sample_record("Newer", "2026-09-04T10:00:00"),
+    ]
+    result = tu.sort_records_newest_first(records)
+    assert [r["name"] for r in result] == ["Newer", "Older"]
+
+
+def test_format_preview_line_is_single_line_and_greppable():
+    record = _sample_record("Widgets Team", "2026-09-04T10:00:00", muted=True)
+    line = tu.format_preview_line(record)
+    assert "\n" not in line
+    assert "Widgets Team" in line
+    assert "Muted" in line
+    assert "Alice Example" in line
+    assert "hi" in line
