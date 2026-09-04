@@ -209,3 +209,30 @@ def test_group_into_messages_multiline_body_with_list_items():
     messages = tu.group_into_messages(nodes)
     assert len(messages) == 1
     assert messages[0]["body"] == "intro line one first point second point"
+
+
+def test_truncate_to_last_n_keeps_most_recent_n_oldest_first():
+    messages = [{"sender": f"s{i}", "body": f"b{i}"} for i in range(5)]
+    result = tu.truncate_to_last_n(messages, 2)
+    assert [m["sender"] for m in result] == ["s3", "s4"]
+
+
+def test_truncate_to_last_n_noop_when_fewer_than_n():
+    messages = [{"sender": "s0", "body": "b0"}]
+    result = tu.truncate_to_last_n(messages, 20)
+    assert result == messages
+
+
+def test_format_retrieve_line_is_single_line():
+    message = {
+        "sender": "Alice Example",
+        "body": "hello there",
+        "timestamp_iso": "2026-09-04T09:00:00",
+        "edited": False,
+        "has_attachment": False,
+    }
+    line = tu.format_retrieve_line(message)
+    assert "\n" not in line
+    assert "Alice Example" in line
+    assert "hello there" in line
+    assert "2026-09-04T09:00:00" in line

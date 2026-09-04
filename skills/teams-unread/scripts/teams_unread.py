@@ -218,3 +218,21 @@ def _parse_message_span(span: list) -> dict:
         "edited": edited,
         "has_attachment": has_attachment,
     }
+
+
+def truncate_to_last_n(messages: list, n: int) -> list:
+    if n <= 0 or len(messages) <= n:
+        return messages
+    return messages[-n:]
+
+
+def format_retrieve_line(message: dict) -> str:
+    tags = []
+    if message["edited"]:
+        tags.append("Edited")
+    if message["has_attachment"]:
+        tags.append("Attachment")
+    tags_str = ",".join(tags) if tags else "-"
+    return (
+        f"{message['timestamp_iso']}\t{message['sender']}\t{tags_str}\t{message['body']}"
+    )
