@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Changes"
+  short_description: "Evidence-based static change review"
+  default_prompt: "Use $review-changes to statically review the specified repository changes."
