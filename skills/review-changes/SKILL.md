@@ -50,7 +50,7 @@ If the current tool set cannot resolve or read both inputs, stop and return the 
 8. Generate candidates, try to disprove each, merge shared root causes, then apply `references/severity-and-confidence.md`.
 9. Write the report from `references/report-schema.md`.
 
-Before judging a change, read relevant base and target definitions, enclosing components, callers, callees, interfaces, implementations, tests, configuration consumers, document references, existing overlapping mechanisms, and adjacent lifecycle paths. Stop expanding only when behavior and consequence are proved or missing evidence is explicit.
+Before judging a change, read the complete pre-change definitions from the base revision and the complete current definitions from the target — not merely the diff's surrounding context lines on either side — for each changed artifact, together with enclosing components, callers, callees, interfaces, implementations, tests, configuration consumers, document references, existing overlapping mechanisms, and adjacent lifecycle paths. A diff hunk under-determines behavior whenever the change touches part of a larger function, class, or file; fetch the full base-revision and target-revision files (e.g. `git show <base>:<path>` and `git show <target>:<path>`, or the base-side/target-side folder or artifact equivalent) whenever the diff's own context is insufficient to establish what the code did before the change or does now. Stop expanding only when behavior and consequence are proved or missing evidence is explicit.
 
 ## Finding gate
 
