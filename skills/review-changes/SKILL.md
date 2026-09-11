@@ -48,7 +48,8 @@ If the current tool set cannot resolve or read both inputs, stop and return the 
 6. Inventory each changed artifact and record it as outcome-related, delivery-required, a finding candidate, or examined and non-defective.
 7. Review in fixed order: outcomes and reachability; correctness, reliability, contracts, and applicable performance; design quality; tests, delivery, and artifacts.
 8. Generate candidates, try to disprove each, merge shared root causes, then apply `references/severity-and-confidence.md`.
-9. Write the report from `references/report-schema.md`.
+9. Before writing the report, confirm that every applicable routed reference was read in full.
+10. Write the report from `references/report-schema.md`.
 
 Before judging a change, read the complete pre-change definitions from the base revision and the complete current definitions from the target — not merely the diff's surrounding context lines on either side — for each changed artifact, together with enclosing components, callers, callees, interfaces, implementations, tests, configuration consumers, document references, existing overlapping mechanisms, and adjacent lifecycle paths. A diff hunk under-determines behavior whenever the change touches part of a larger function, class, or file; fetch the full base-revision and target-revision files (e.g. `git show <base>:<path>` and `git show <target>:<path>`, or the base-side/target-side folder or artifact equivalent) whenever the diff's own context is insufficient to establish what the code did before the change or does now. Stop expanding only when behavior and consequence are proved or missing evidence is explicit.
 
