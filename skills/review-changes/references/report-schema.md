@@ -1,6 +1,6 @@
 # Review report
 
-Write for a human maintainer with limited attention. Lead with the verdict and findings. Omit empty sections except review identity and verdict.
+Write for a human maintainer with limited attention. Lead with the verdict and findings. Omit empty sections except review identity and verdict. Write findings in plain language — short sentences, the key point first, one concern at a time — the same standard the review applies to documentation.
 
 ## Header
 
@@ -9,6 +9,7 @@ For immutable Git comparisons:
 ```markdown
 # Change review
 
+- Verdict: ready | ready (no changes) | not ready
 - Comparison kind: direct Git | branch submission
 - Requested base ref: <ref name, when supplied>
 - Requested base commit: <full object ID>
@@ -16,7 +17,6 @@ For immutable Git comparisons:
 - Reviewed head commit: <full target object ID>
 - Previous reviewed head commit: <full object ID, only for repeated review>
 - Previous report: <safe logical name, only when supplied>
-- Verdict: ready | ready (no changes) | not ready
 ```
 
 For a Git working-tree target:
@@ -24,12 +24,12 @@ For a Git working-tree target:
 ```markdown
 # Change review
 
+- Verdict: ready | ready (no changes) | not ready
 - Base commit: <full object ID>
 - Target identity: <supplied immutable identity | mutable working-tree snapshot>
 - Included layers: staged, unstaged, untracked
 - Previous target identity: <supplied immutable identity, only for repeated review>
 - Previous report: <safe logical name, only when supplied>
-- Verdict: ready | ready (no changes) | not ready
 ```
 
 Do not emit `Reviewed head commit:` for a mutable target. For non-Git comparisons, replace the Git fields with supplied immutable base and target identities. If either identity is unavailable, label it `mutable snapshot`; do not claim identical-input detection or lineage continuity.
@@ -83,7 +83,7 @@ List applicable behavior that source alone cannot establish and the author-run v
 
 ## Evidence coverage
 
-Briefly name applicable quality areas and important repository procedures examined. Do not dump a completed checklist, raw commands, logs, task narration, gate names, or counts used to perform the review.
+Briefly name applicable quality areas and important repository procedures examined. For human-authored code or documentation changes, state in one sentence whether the change keeps the design easy for a human maintainer to follow. Do not dump a completed checklist, raw commands, logs, task narration, gate names, or counts used to perform the review.
 
 ## Readiness rule
 
