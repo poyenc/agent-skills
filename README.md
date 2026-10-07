@@ -21,6 +21,7 @@ A collection of Claude Code agent skills for specialized tasks.
 | **[context-watchdog](skills/context-watchdog/SKILL.md)** | Monitor Claude Code agent context usage across tmux panes. Scans all Claude panes in the current tmux window and reports their context percentage. Supports one-shot scan and recurring cron monitor modes. |
 | **[write-html-doc](skills/write-html-doc/SKILL.md)** | Produce a single self-contained HTML technical document in a fixed house style (light theme, all IBM Plex Mono, sticky sidebar TOC with scroll-spy, tables/callouts/chips, no charts). Converts a Markdown/text/source file to HTML or writes it straight from the conversation; editorialize or faithful conversion; locked template with per-request overrides. |
 | **[teams-unread](skills/teams-unread/SKILL.md)** | List unread Microsoft Teams 1:1/group chats, or pull recent message history from a specific chat, by reading the Teams desktop app's UI Automation accessibility tree - no Teams API or bot registration needed. Windows only. |
+| **[message-discipline](skills/message-discipline/SKILL.md)** | Gate every outbound inter-agent message on whether it carries substantive value and whether sending is required right now, suppressing bare acknowledgments and status placeholders regardless of role or recipient count. |
 
 ## Usage
 
