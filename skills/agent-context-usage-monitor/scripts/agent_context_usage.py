@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+"""Report the context-window usage of live herdr agents against their rotation thresholds (read-only).
+
+For each agent it reads the visible pane text with `herdr agent read` and parses the status line
+that Claude Code and pi print at the bottom of the pane, for example
+`Sonnet 5 high . CH99.5%/92% 22.0%/1M` (context used / context window) and a `215376 tokens`
+counter. The rotation thresholds are the ones in the project skill agent-rotation-discipline:
+Claude models 55%, gpt-5.6-terra 45%, gpt-5.6-sol 25%. Nothing is sent to any agent and nothing
+is rotated; rotating is the lead's job through the herdr-kit:rotate skill.
+
+Usage:
+  agent_context_usage.py                       # every live agent whose name starts with sched-
+  agent_context_usage.py --prefix ''           # every named live agent
+  agent_context_usage.py --names a,b           # only these agents (name or pane id)
+  agent_context_usage.py --json                # machine-readable output
+  agent_context_usage.py --rotate-only         # print only agents due for rotation (for cron)
+
+Exit status: 0 normally; 2 when at least one scanned agent is at or above its threshold
+(so a caller can branch on it); 1 if herdr itself fails.
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+
+# "22.0%/1M": context used over window size. The cache-hit field "CH99.5%/92%" has no K/M
+# suffix after the slash, so it does not match.
+CONTEXT_RE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)%/(\d+(?:\.\d+)?)([KM])\b")
+TOKENS_RE = re.compile(r"(\d[\d,]*)\s+tokens\b")
+# Claude Code prints "Sonnet 5 high <middle dot> CH99.5%/92% ..." (U+00B7; escaped to keep the file ASCII).
+CLAUDE_MODEL_RE = re.compile(r"((?:Sonnet|Opus|Haiku|Fable)[\w .\-]*?)\s*(?:\u00b7|\.)\s*CH")
+# pi prints "(provider) gpt-5.6-sol <bullet> medium" (U+2022). Anchoring on the bullet avoids matching
+# a model name that merely appears in the conversation text.
+GPT_MODEL_RE = re.compile(r"\b(gpt-[\w.]+-[A-Za-z]+)\s*\u2022")
+
+# Percent of the context window at which the lead rotates (skill agent-rotation-discipline, rule 1).
+THRESHOLDS = (("gpt-5.6-sol", 25.0), ("gpt-5.6-terra", 45.0))
+CLAUDE_THRESHOLD = 55.0
+CLAUDE_PREFIXES = ("Sonnet", "Opus", "Haiku", "Fable")
+
+
+def run_herdr(args: list[str]) -> str:
+    out = subprocess.run(["herdr", *args], capture_output=True, text=True, timeout=30)
+    if out.returncode != 0:
+        raise RuntimeError(f"herdr {' '.join(args)} failed: {out.stderr.strip()[:200]}")
+    return out.stdout
+
+
+def list_agents(names: set[str] | None, prefix: str) -> list[dict]:
+    agents = json.loads(run_herdr(["agent", "list"]))["result"]["agents"]
+    picked = []
+    for agent in agents:
+        label = agent.get("name")
+        if names is not None:
+            if label in names or agent["pane_id"] in names:
+                picked.append(agent)
+        elif label and label.startswith(prefix):
+            picked.append(agent)
+    return picked
+
+
+def threshold_for(model: str | None) -> float | None:
+    if not model:
+        return None
+    for key, value in THRESHOLDS:
+        if model.startswith(key):
+            return value
+    if model.startswith(CLAUDE_PREFIXES):
+        return CLAUDE_THRESHOLD
+    return None
+
+
+def parse_pane(text: str) -> dict:
+    info = {"context_percent": None, "window": None, "tokens": None, "model": None}
+    matches = CONTEXT_RE.findall(text)
+    if matches:
+        percent, size, unit = matches[-1]  # the status line is at the bottom: take the last
+        info["context_percent"] = float(percent)
+        info["window"] = f"{size}{unit}"
+    tokens = TOKENS_RE.findall(text)
+    if tokens:
+        info["tokens"] = int(tokens[-1].replace(",", ""))
+    claude = CLAUDE_MODEL_RE.findall(text)
+    gpt = GPT_MODEL_RE.findall(text)
+    if claude:
+        info["model"] = claude[-1].strip()
+    elif gpt:
+        info["model"] = gpt[-1]
+    return info
+
+
+def collect(agent: dict) -> dict:
+    target = agent.get("name") or agent["pane_id"]
+    row = {
+        "agent": target,
+        "pane": agent["pane_id"],
+        "kind": agent.get("agent"),
+        "state": agent.get("agent_status"),
+    }
+    try:
+        text = run_herdr(["agent", "read", target, "--source", "visible", "--lines", "20"])
+        row.update(parse_pane(text))
+    except Exception as exc:  # an unreadable pane must not hide the other agents
+        row.update({"context_percent": None, "window": None, "tokens": None, "model": None})
+        row["error"] = str(exc)
+    row["threshold"] = threshold_for(row["model"])
+    if row["context_percent"] is None or row["threshold"] is None:
+        row["level"] = "unknown"
+    else:
+        row["level"] = "ROTATE" if row["context_percent"] >= row["threshold"] else "ok"
+    return row
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--names", help="comma-separated agent names or pane ids (overrides --prefix)")
+    parser.add_argument("--prefix", default="sched-", help="agent name prefix to scan (default sched-)")
+    parser.add_argument("--json", action="store_true", help="print JSON instead of a table")
+    parser.add_argument(
+        "--rotate-only",
+        action="store_true",
+        help="print one line per agent at ROTATE (name, state, usage); nothing when none is due.\n"
+        "An agent whose status line cannot be parsed prints as UNKNOWN: look at its pane.",
+    )
+    args = parser.parse_args()
+
+    names = {n.strip() for n in args.names.split(",") if n.strip()} if args.names else None
+    rows = [collect(a) for a in list_agents(names, args.prefix)]
+    rows.sort(key=lambda r: -(r["context_percent"] if r["context_percent"] is not None else -1))
+
+    if args.rotate_only:
+        for r in rows:
+            if r["level"] == "ROTATE":
+                print(f"ROTATE {r['agent']} state={r['state']} {r['context_percent']:.1f}%/{r['threshold']:.0f}%")
+            elif r["level"] == "unknown":
+                print(f"UNKNOWN {r['agent']} state={r['state']}")
+    elif args.json:
+        json.dump(rows, sys.stdout, indent=2)
+        print()
+    else:
+        print(f"{'agent':<18}{'state':<9}{'context':>9}{'threshold':>11}{'tokens':>10}  {'level':<8}model")
+        for r in rows:
+            pct = f"{r['context_percent']:.1f}%" if r["context_percent"] is not None else "n/a"
+            thr = f"{r['threshold']:.0f}%" if r["threshold"] is not None else "n/a"
+            tok = str(r["tokens"]) if r["tokens"] is not None else "n/a"
+            print(f"{r['agent']:<18}{(r['state'] or '?'):<9}{pct:>9}{thr:>11}{tok:>10}  {r['level']:<8}{r.get('model') or ''}")
+    return 2 if any(r["level"] == "ROTATE" for r in rows) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
