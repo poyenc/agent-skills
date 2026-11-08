@@ -25,8 +25,9 @@ python3 -I .claude/skills/agent-context-usage-monitor/scripts/agent_context_usag
   `unknown` when the status line or the model could not be parsed (so the agent's pane needs a
   manual look; do not treat unknown as ok).
 - `--rotate-only` prints one line per agent at `ROTATE` (`ROTATE <name> state=<state> <percent>/<threshold>`),
-  `UNKNOWN <name> state=<state>` for an agent whose percent or model could not be parsed (pi hides the
-  model in a narrow pane; no threshold is guessed), and no line for an agent that is `ok`. Use it in a cron so
+  `UNKNOWN <name> state=<state> model=<model|unknown> context=<percent>/<window>|unknown` for an agent whose
+  percent or model could not be parsed (pi hides the model in a narrow pane; no threshold is guessed; a parsed
+  model missing from the threshold table prints its own name), and no line for an agent that is `ok`. Use it in a cron so
   the output itself says who to rotate and no judgement is needed.
 - Exit status is 2 when any scanned agent is at `ROTATE`, 0 otherwise, 1 if herdr fails.
 

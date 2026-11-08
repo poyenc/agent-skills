@@ -136,7 +136,11 @@ def main() -> int:
             if r["level"] == "ROTATE":
                 print(f"ROTATE {r['agent']} state={r['state']} {r['context_percent']:.1f}%/{r['threshold']:.0f}%")
             elif r["level"] == "unknown":
-                print(f"UNKNOWN {r['agent']} state={r['state']}")
+                model = r.get("model") or "unknown"
+                if r["context_percent"] is not None:
+                    print(f"UNKNOWN {r['agent']} state={r['state']} model={model} context={r['context_percent']:.1f}%/{r['window']}")
+                else:
+                    print(f"UNKNOWN {r['agent']} state={r['state']} model={model} context=unknown")
     elif args.json:
         json.dump(rows, sys.stdout, indent=2)
         print()
