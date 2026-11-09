@@ -1,0 +1,15 @@
+# Example pr-review repository config.
+# Lives at ~/.claude/pr-review/<owner>/<repo>/config.yaml ($PR_REVIEW_HOME replaces ~/.claude/pr-review).
+# Values below are the defaults; a key left out takes the default shown.
+# team is optional: each role's harness, model and effort default as below, and a key you set replaces
+# only that key. Overriding harness to another harness requires setting model too (harness is claude or pi;
+# pi takes <provider/id>).
+# team:
+#   reviewer:  {harness: pi, model: amd-gateway/gpt-6.1-sol, effort: high}
+#   architect: {harness: claude, model: "Claude-Opus-5.5[1m]", effort: high}
+blocking_threshold: medium          # findings at or above this severity block (inline threads); lower ones go in the non-blocking comment
+dry_run: true                       # write would-be comments to the PR's notes file instead of GitHub; switch off after checking a first few reviews
+skip_paths: []                      # globs for generated or vendored files the team does not review
+unrelated_change_lines: 200         # follow-up: changed lines unrelated to our threads above which the lead escalates instead of approving
+lock_stale_after: 3h                # a run's lock on a PR older than this counts as abandoned
+persona_dir: ~/workspace/repo/claude-code-setting/agents   # holds orchestrator/, reviewer/, architect/ with system-prompt.md
