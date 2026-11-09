@@ -1,0 +1,27 @@
+# Example pr-watch config: FMHA (fused multi-head attention) PRs in ROCm/rocm-libraries.
+# Copy to ~/.claude/pr-watch/fmha.yaml and adjust. persona_dir, not listed here, takes its built-in default.
+# Each lead uses the `pr-review` skill, which keeps the review settings (review team, threshold, dry run)
+# per repository: run /pr-review ROCm/rocm-libraries <PR> once before starting this watcher.
+name: fmha                          # watcher name; names the record directory and the lead agent
+repo: ROCm/rocm-libraries
+checkout: ~/workspace/worktree/pr-watch-fmha   # dedicated worktree the leads review in; each run discards its uncommitted and untracked files
+prefilter:                          # cheap gh-side filters, all optional
+  labels: ["project: composablekernel"]
+  base: develop
+  authors: []
+  include_drafts: false             # drafts are classified like any PR but not queued for review until marked ready
+  include_own_prs: false            # PRs authored by the gh account's user; classified like any PR but queued only when true
+interest: >                         # plain-language criteria the Haiku scanner applies
+  The PR's main purpose is FMHA (fused multi-head attention): kernel, pipeline,
+  codegen, tests, or CI specific to FMHA. Incidental touches do not count.
+schedule:
+  every: 24h                        # loop interval, shorter than 7d
+  until: null                       # optional end time; the supervisor stops its loop after it
+max_pr_duration: 3h                 # supervisor flags a lead that runs longer
+# max_reviews_per_fire: 4           # most leads one fire starts (integer >= 1); 4 is the default, so leave it out to keep it
+team:
+  supervisor: {harness: claude, model: sonnet, effort: medium}   # the session you run /pr-watch fmha in; must stay claude
+  scanner:    {model: haiku}
+  # lead is optional and defaults to the line below; a key you set replaces only that key. Overriding harness
+  # to pi requires a model too ({harness: pi, model: "<provider/id>"}); invoke defaults to /pr-review (claude) or /skill:pr-review (pi).
+  # lead: {harness: claude, model: "Claude-Sonnet-5.5[1m]", effort: high}
