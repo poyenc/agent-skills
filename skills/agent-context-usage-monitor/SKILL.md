@@ -1,6 +1,6 @@
 ---
 name: agent-context-usage-monitor
-description: Use whenever the lead needs to know how full the sched-* agents' context windows are, or whether any of them is due for rotation. Run the bundled script instead of eyeballing panes. Trigger on "monitor context", "monitor agent context", "monitor context usage", "check context", "context usage", "how full are the agents", "who needs rotating", "time to rotate", before handing a long task to a worker, when a worker's answers get vague or repetitive, and on any periodic team check. It reports each agent's context percent against its model's rotation threshold (Claude 55%, gpt-5.6-terra 45%, gpt-5.6-sol 25%). It is read-only: rotating is a separate step under agent-rotation-discipline.
+description: Use whenever the lead needs to know how full the sched-* agents' context windows are, or whether any of them is due for rotation. Run the bundled script instead of eyeballing panes. Trigger on "monitor context", "monitor agent context", "monitor context usage", "check context", "context usage", "how full are the agents", "who needs rotating", "time to rotate", before handing a long task to a worker, when a worker's answers get vague or repetitive, and on any periodic team check. It reports each agent's context percent against its model's rotation threshold (Claude 55%, gpt tier terra 45%, gpt tier sol 25%, any version). It is read-only: rotating is a separate step under agent-rotation-discipline.
 ---
 
 # Check agent context usage against the rotation thresholds
@@ -43,7 +43,7 @@ agent whose level is `ok` on a hunch. The script never rotates and never message
   over window, and `CH..%/..%` (cache hit) is ignored. If the status line format changes, rows turn
   `unknown`; fix the regular expressions in the script instead of guessing numbers.
 - The thresholds in the script mirror agent-rotation-discipline rule 1. If the rule changes,
-  change `THRESHOLDS` and `CLAUDE_THRESHOLD` in the script in the same edit.
+  change `GPT_TIER_THRESHOLDS` and `CLAUDE_THRESHOLD` in the script in the same edit.
 - A one-shot run is enough for most questions. For a recurring check, use the
   poll-long-run-with-cron skill, only when the user asks for one, and delete the cron when it is no
   longer needed. Recommended interval: every 20 minutes (`*/20 * * * *`).

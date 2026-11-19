@@ -6,7 +6,7 @@ For each agent it reads the visible pane text with `herdr agent read` and parses
 that Claude Code and pi print at the bottom of the pane, for example
 `Sonnet 5 high . CH99.5%/92% 22.0%/1M` (context used / context window) and a `215376 tokens`
 counter. The rotation thresholds are the ones in the project skill agent-rotation-discipline:
-Claude models 55%, gpt-5.6-terra 45%, gpt-5.6-sol 25%. Nothing is sent to any agent and nothing
+Claude models 55%, gpt tier terra 45%, gpt tier sol 25% (any version: gpt-5.6-sol, gpt-6.1-sol, ...). Nothing is sent to any agent and nothing
 is rotated; rotating is the lead's job through the herdr-kit:rotate skill.
 
 Usage:
@@ -37,7 +37,9 @@ CLAUDE_MODEL_RE = re.compile(r"((?:Sonnet|Opus|Haiku|Fable)[\w .\-]*?)\s*(?:\u00
 GPT_MODEL_RE = re.compile(r"\b(gpt-[\w.]+-[A-Za-z]+)\s*\u2022")
 
 # Percent of the context window at which the lead rotates (skill agent-rotation-discipline, rule 1).
-THRESHOLDS = (("gpt-5.6-sol", 25.0), ("gpt-5.6-terra", 45.0))
+# The gpt tier is the last word of the model name; the version before it does not change the threshold. A tier not
+# listed here stays unknown (no threshold is guessed).
+GPT_TIER_THRESHOLDS = {"sol": 25.0, "terra": 45.0}
 CLAUDE_THRESHOLD = 55.0
 CLAUDE_PREFIXES = ("Sonnet", "Opus", "Haiku", "Fable")
 
@@ -65,9 +67,9 @@ def list_agents(names: set[str] | None, prefix: str) -> list[dict]:
 def threshold_for(model: str | None) -> float | None:
     if not model:
         return None
-    for key, value in THRESHOLDS:
-        if model.startswith(key):
-            return value
+    gpt = re.fullmatch(r"gpt-[\w.]+-([A-Za-z]+)", model)
+    if gpt:
+        return GPT_TIER_THRESHOLDS.get(gpt.group(1))
     if model.startswith(CLAUDE_PREFIXES):
         return CLAUDE_THRESHOLD
     return None
