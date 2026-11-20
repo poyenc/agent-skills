@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Find the reviewer and architect agents of the caller's own herdr workspace by
+# their launch command (--system-prompt-file .../agents/<role>/system-prompt.md).
+# Agent names are ignored: they may be missing or differ between teams.
+#
+# stdout, exit 0: one line per role, in order reviewer then architect:
+#   <role> TAB <pane id> TAB <agent name or -> TAB <agent_status> TAB <interactive_ready>
+# exit 2: a role has no match or more than one; the matches (or "none") of both
+#   roles go to stderr and nothing goes to stdout. The caller asks the owner.
+# exit 3: HERDR_WORKSPACE_ID is unset.
+#
+# Test hook: FIND_COUNCIL_CANDIDATES_FILE replaces the /proc scan with lines of
+#   <pid> TAB <role> TAB <workspace id> TAB <pane id>.
+set -u
+workspace="${HERDR_WORKSPACE_ID:-}"
+[[ -n "$workspace" ]] || { echo "HERDR_WORKSPACE_ID is unset" >&2; exit 3; }
+
+candidates() {
+  if [[ -n "${FIND_COUNCIL_CANDIDATES_FILE:-}" ]]; then
+    cat "$FIND_COUNCIL_CANDIDATES_FILE"
+    return
+  fi
+  local pid role env_lines ws pane
+  for pid in $(pgrep -u "$(id -un)" -f -- '--system-prompt-file'); do
+    role=$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null |
+      grep -oP -- '--system-prompt-file \S*/agents/\K(reviewer|architect)(?=/system-prompt\.md)') || continue
+    env_lines=$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null) || continue
+    ws=$(sed -n 's/^HERDR_WORKSPACE_ID=//p' <<<"$env_lines")
+    pane=$(sed -n 's/^HERDR_PANE_ID=//p' <<<"$env_lines")
+    printf '%s\t%s\t%s\t%s\n' "$pid" "$role" "$ws" "$pane"
+  done
+}
+
+agents_json=$(herdr agent list 2>/dev/null || echo '{}')
+all=$(candidates)
+status=0
+lines=()
+report=()
+for role in reviewer architect; do
+  mapfile -t panes < <(awk -F'\t' -v r="$role" -v w="$workspace" '$2==r && $3==w {print $4}' <<<"$all" | sort -u)
+  if [[ ${#panes[@]} -eq 1 ]]; then
+    info=$(jq -r --arg p "${panes[0]}" '.result.agents[]? | select(.pane_id==$p)
+      | [(.name // "-"), .agent_status, (.interactive_ready // false)] | @tsv' <<<"$agents_json")
+    lines+=("$(printf '%s\t%s\t%s' "$role" "${panes[0]}" "${info:--	-	-}")")
+  else
+    status=2
+  fi
+  report+=("$role: ${panes[*]:-none}")
+done
+if [[ $status -eq 0 ]]; then printf '%s\n' "${lines[@]}"; else printf '%s\n' "${report[@]}" >&2; fi
+exit $status
