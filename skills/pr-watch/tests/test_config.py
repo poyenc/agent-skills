@@ -71,8 +71,8 @@ def test_home_defaults_to_claude_pr_watch(monkeypatch):
 
 
 @pytest.mark.parametrize("harness, invoke, expected", [
-    ("claude", None, "/pr-review"),
-    ("pi", None, "/skill:pr-review"),
+    ("claude", None, "/pr-review-auto"),
+    ("pi", None, "/skill:pr-review-auto"),
     ("pi", "/custom", "/custom"),
 ])
 def test_lead_invoke(harness, invoke, expected):

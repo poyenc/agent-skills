@@ -31,7 +31,7 @@ REGISTRARS = [_register_validate, state.register, gitops.register, lock.register
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="pr-review")
+    parser = argparse.ArgumentParser(prog="pr-review-auto")
     subparsers = parser.add_subparsers(dest="command", required=True)
     for register in REGISTRARS:
         register(subparsers)
@@ -48,20 +48,20 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except (proc.CommandError, gitops.CheckoutError) as e:
-        print(f"pr-review: {e}", file=sys.stderr)
+        print(f"pr-review-auto: {e}", file=sys.stderr)
         return 1
     except config.BadRepository as e:
-        print(f"pr-review: {e}", file=sys.stderr)
+        print(f"pr-review-auto: {e}", file=sys.stderr)
         return 2
     except config.ConfigError as e:
-        print(f"pr-review: {e}", file=sys.stderr)
+        print(f"pr-review-auto: {e}", file=sys.stderr)
         return 1
     except FileNotFoundError as e:
         repo = getattr(args, "repo", None)  # notify and member-close take none
         path = config.config_path(repo) if repo else None
         if e.filename != str(path):
             raise
-        print(f"pr-review: no config for {args.repo} at {path}", file=sys.stderr)
+        print(f"pr-review-auto: no config for {args.repo} at {path}", file=sys.stderr)
         return 1 if args.command in CONFIG_OPTIONAL else NEEDS_CONFIG_EXIT
 
 

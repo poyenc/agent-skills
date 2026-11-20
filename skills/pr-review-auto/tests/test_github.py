@@ -1,4 +1,4 @@
-"""Tests for `pr-review gh <owner/repo> <pr> <action>`.
+"""Tests for `pr-review-auto gh <owner/repo> <pr> <action>`.
 
 Fake `gh` matching scheme (prefix match, first wins):
 - `gh api user ...`        -> ["api", "user"]

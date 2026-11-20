@@ -57,7 +57,7 @@ def _spawn(args) -> int:
     cfg = config.load(args.repo)
     caller = os.environ.get("HERDR_PANE_ID")
     if not caller:
-        print("pr-review spawn: HERDR_PANE_ID is not set; run it from a pane inside herdr", file=sys.stderr)
+        print("pr-review-auto spawn: HERDR_PANE_ID is not set; run it from a pane inside herdr", file=sys.stderr)
         return 1
     pane = proc.herdr_json("pane", "split", "--pane", caller, "--direction", SPLIT_DIRECTION[args.role],
                            "--cwd", os.getcwd(), "--no-focus")["result"]["pane"]["pane_id"]
@@ -73,7 +73,7 @@ def _member_close(args) -> int:
 
 def _notify(args) -> int:
     if os.environ.get("HERDR_ENV") != "1":
-        print("pr-review notify: not inside a herdr session (HERDR_ENV is not 1); nothing was sent",
+        print("pr-review-auto notify: not inside a herdr session (HERDR_ENV is not 1); nothing was sent",
               file=sys.stderr)
         return 1
     proc.run(["herdr", "agent", "prompt", args.target, args.text])

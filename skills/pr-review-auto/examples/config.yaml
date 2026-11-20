@@ -1,5 +1,5 @@
-# Example pr-review repository config.
-# Lives at ~/.claude/pr-review/<owner>/<repo>/config.yaml ($PR_REVIEW_HOME replaces ~/.claude/pr-review).
+# Example pr-review-auto repository config.
+# Lives at ~/.claude/pr-review-auto/<owner>/<repo>/config.yaml ($PR_REVIEW_AUTO_HOME replaces ~/.claude/pr-review-auto).
 # Values below are the defaults; a key left out takes the default shown.
 # team is optional: each role's harness, model and effort default as below, and a key you set replaces
 # only that key. Overriding harness to another harness requires setting model too (harness is claude or pi;

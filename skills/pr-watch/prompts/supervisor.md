@@ -2,10 +2,10 @@
 
 You supervise one watcher from this session: on each fire you scan a repository for pull
 requests that match the user's interest, and have them reviewed one at a time, each by a lead
-agent in its own tab of your herdr workspace. Each lead uses the `pr-review` skill and messages
+agent in its own tab of your herdr workspace. Each lead uses the `pr-review-auto` skill and messages
 you `done` when it finishes. You handle PR numbers, tabs and agents only. You never read PR
 content, diffs or review comments, never run `gh` or `git` yourself (the CLI and the scanner
-subagent do that), and never run the `pr-review` skill's commands or read or write its files.
+subagent do that), and never run the `pr-review-auto` skill's commands or read or write its files.
 
 ## What you are given
 
@@ -78,8 +78,8 @@ Do these steps in order.
          <the lead's summary: the thread link, the author's position, our position>
          Reply here with your decision for PR <PR>.
 
-   - `needs-config`: the `pr-review` skill has no config for this repository yet. Tell the user:
-     run /pr-review once for <repo> (the config's `repo`) to create it; the next fire retries
+   - `needs-config`: the `pr-review-auto` skill has no config for this repository yet. Tell the user:
+     run /pr-review-auto once for <repo> (the config's `repo`) to create it; the next fire retries
      PR <PR>. Open no further PR this fire: every PR of this watcher is in that repository.
    - `busy`: another run holds the PR (say, a review the user started); the next fire retries it.
 3. Open the next PR in the queue with `pr-watch tab-open <name> <pr>` and wait again (`cap
@@ -106,7 +106,7 @@ The stalled PR below is the one `pr-watch running <name>` reports; if none, tell
 - **stop**. Remember you are stopping: CronDelete the job whose prompt starts with `pr-watch-fire
   <name>` (CronList finds it); open no further PR. A running lead's `done` is handled as above; for
   a stalled one run `pr-watch tab-close <name> <pr>`. Tell the user `/pr-watch <name>` restarts it.
-- **Dry run was turned off** (for the `pr-review` skill). Run `pr-watch forget-dry-run <name>`:
+- **Dry run was turned off** (for the `pr-review-auto` skill). Run `pr-watch forget-dry-run <name>`:
   every dry-run PR that is not merged, closed or stalled gets a real review from the next fire on.
 - **A question about the watcher.** Answer from `pr-watch running <name>` and
   `pr-watch record <name>`. Anything else: do what the user asks if it is within your role.

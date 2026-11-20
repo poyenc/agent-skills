@@ -217,18 +217,18 @@ def test_missing_config_exit_3(review_home, capsys):
     assert cli.main(["paths", REPO, "5"]) == 3
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == f"pr-review: no config for {REPO} at {review_home / 'o' / 'r' / 'config.yaml'}\n"
+    assert captured.err == f"pr-review-auto: no config for {REPO} at {review_home / 'o' / 'r' / 'config.yaml'}\n"
 
 
 @pytest.mark.parametrize("argv", [["decide", REPO, "5", "go"], ["review-state", REPO, "5"]])
 def test_missing_config_exit_3_every_command(argv, capsys):
     assert cli.main(argv) == 3
-    assert capsys.readouterr().err.startswith(f"pr-review: no config for {REPO} at ")
+    assert capsys.readouterr().err.startswith(f"pr-review-auto: no config for {REPO} at ")
 
 
 def test_validate_missing_config_exits_1_not_3(review_home, capsys):
     assert cli.main(["validate", REPO]) == 1
-    assert capsys.readouterr().err == f"pr-review: no config for {REPO} at {review_home / 'o' / 'r' / 'config.yaml'}\n"
+    assert capsys.readouterr().err == f"pr-review-auto: no config for {REPO} at {review_home / 'o' / 'r' / 'config.yaml'}\n"
 
 
 def test_bad_repository_is_a_value_error():
@@ -250,7 +250,7 @@ def test_other_value_errors_are_not_reported_as_bad_repository(write_config, mon
 
 def test_bad_repo_argument_exits_2(capsys):
     assert cli.main(["paths", "justname", "5"]) == 2
-    assert capsys.readouterr().err.startswith("pr-review: bad repository 'justname'")
+    assert capsys.readouterr().err.startswith("pr-review-auto: bad repository 'justname'")
 
 
 # --- malformed config.yaml ---------------------------------------------------------
@@ -290,7 +290,7 @@ def test_cli_malformed_config_is_one_stderr_line(review_home, capsys, command, t
     captured = capsys.readouterr()
     assert code == 1  # not 3: 3 means "no config"
     assert captured.out == ""
-    assert captured.err.startswith("pr-review: ") and message in captured.err
+    assert captured.err.startswith("pr-review-auto: ") and message in captured.err
     assert captured.err.count("\n") >= 1 and "Traceback" not in captured.err
 
 

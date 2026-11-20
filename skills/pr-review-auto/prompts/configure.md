@@ -1,9 +1,9 @@
-# pr-review: configure a repository
+# pr-review-auto: configure a repository
 
 You run in the user's own agent session. Create the repository config for `<owner>/<repo>`, or
-change it, by asking the user questions. In this file, `pr-review` means
-`<skill dir>/scripts/pr-review`, `<home>` is `$PR_REVIEW_HOME` if set, else
-`~/.claude/pr-review`, and the config file is `<home>/<owner>/<repo>/config.yaml`.
+change it, by asking the user questions. In this file, `pr-review-auto` means
+`<skill dir>/scripts/pr-review-auto`, `<home>` is `$PR_REVIEW_AUTO_HOME` if set, else
+`~/.claude/pr-review-auto`, and the config file is `<home>/<owner>/<repo>/config.yaml`.
 
 ## Rules
 
@@ -77,7 +77,7 @@ Every CLI call re-reads the config, so never leave a failing config at
 1. Create a temp directory (`mktemp -d`) and write the full candidate config to
    `<tmpdir>/<owner>/<repo>/config.yaml` (for an existing config: the current file with only
    the requested changes, keeping its other keys and comments).
-2. Run `PR_REVIEW_HOME=<tmpdir> pr-review validate <owner>/<repo>`. It prints one line per
+2. Run `PR_REVIEW_AUTO_HOME=<tmpdir> pr-review-auto validate <owner>/<repo>`. It prints one line per
    problem and exits non-zero. It checks: the repository is reachable with `gh` and the `gh`
    account has write access to it (WRITE, MAINTAIN or ADMIN), `team.reviewer` and
    `team.architect` (defaults applied for what the file omits) each have an installed harness

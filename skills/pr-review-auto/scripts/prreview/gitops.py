@@ -1,11 +1,11 @@
-"""Branch lifecycle of the local PR branches `pr-review/<N>`, and PR state.
+"""Branch lifecycle of the local PR branches `pr-review-auto/<N>`, and PR state.
 
-`--checkout` is a worktree dedicated to pr-review, so leftovers from a previous run are
+`--checkout` is a worktree dedicated to pr-review-auto, so leftovers from a previous run are
 discarded without asking. Every git call is `git -C <checkout>`, and only after
 `_worktree` confirmed the path is the root of a git worktree whose `origin` is the
 requested repository: `reset --hard` and `clean -fdx` must never reach a repository the
 user did not point us at. Only branches
-named exactly `pr-review/<N>` (N decimal digits) are ever deleted.
+named exactly `pr-review-auto/<N>` (N decimal digits) are ever deleted.
 """
 import json
 import re
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import config, proc, state
 
-BRANCH_RE = re.compile(r"pr-review/([1-9][0-9]*)")
+BRANCH_RE = re.compile(r"pr-review-auto/([1-9][0-9]*)")
 FINISHED_STATES = ("MERGED", "CLOSED")
 
 
@@ -30,7 +30,7 @@ def positive_int(text: str) -> int:
 
 
 def _branch(pr: int) -> str:
-    return f"pr-review/{pr}"
+    return f"pr-review-auto/{pr}"
 
 
 def origin_names_repo(url: str, repo: str) -> bool:
@@ -87,7 +87,7 @@ def _checkout(args) -> int:
     path = _worktree(args.checkout, args.repo)
     branch = _branch(args.pr)
     # Detach first: fetch refuses to update a branch checked out in any worktree of the
-    # clone. The PR is checked out detached too, so no worktree ever holds pr-review/<N>
+    # clone. The PR is checked out detached too, so no worktree ever holds pr-review-auto/<N>
     # and a sibling worktree of the same clone can fetch, check out or delete it.
     _git(path, "checkout", "--detach")
     _git(path, "reset", "--hard")
@@ -112,7 +112,7 @@ def _is_approved(cfg: dict, repo: str, pr: int) -> bool:
 def _cleanup(args) -> int:
     cfg = config.load(args.repo)
     path = _worktree(args.checkout, args.repo)
-    names = _git(path, "for-each-ref", "--format=%(refname:short)", "refs/heads/pr-review/").stdout.split()
+    names = _git(path, "for-each-ref", "--format=%(refname:short)", "refs/heads/pr-review-auto/").stdout.split()
     deleted, failed = [], False
     for name in names:
         match = BRANCH_RE.fullmatch(name)
@@ -124,7 +124,7 @@ def _cleanup(args) -> int:
             if finished and _delete_branch(path, name):
                 deleted.append(pr)
         except (proc.CommandError, KeyError, ValueError) as e:
-            print(f"pr-review: keeping {name}: {e}", file=sys.stderr)
+            print(f"pr-review-auto: keeping {name}: {e}", file=sys.stderr)
             failed = True
     print(json.dumps(sorted(deleted)))
     return 1 if failed else 0
@@ -142,19 +142,19 @@ def register(subparsers) -> None:
     p.add_argument("pr", type=positive_int)
     p.set_defaults(func=_pr_state)
 
-    p = subparsers.add_parser("checkout", help="fetch PR <pr> into pr-review/<pr>, check it out detached; prints head SHA")
+    p = subparsers.add_parser("checkout", help="fetch PR <pr> into pr-review-auto/<pr>, check it out detached; prints head SHA")
     p.add_argument("repo")
     p.add_argument("pr", type=positive_int)
     p.add_argument("--checkout", required=True, help="the dedicated worktree to prepare")
     p.set_defaults(func=_checkout)
 
-    p = subparsers.add_parser("drop-branch", help="delete the local pr-review/<pr> branch if present")
+    p = subparsers.add_parser("drop-branch", help="delete the local pr-review-auto/<pr> branch if present")
     p.add_argument("repo")
     p.add_argument("pr", type=positive_int)
     p.add_argument("--checkout", required=True)
     p.set_defaults(func=_drop_branch)
 
-    p = subparsers.add_parser("cleanup", help="delete pr-review/<N> branches of merged, closed or approved PRs")
+    p = subparsers.add_parser("cleanup", help="delete pr-review-auto/<N> branches of merged, closed or approved PRs")
     p.add_argument("repo")
     p.add_argument("--checkout", required=True)
     p.set_defaults(func=_cleanup)

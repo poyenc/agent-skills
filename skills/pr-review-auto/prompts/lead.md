@@ -1,4 +1,4 @@
-# Lead procedure (pr-review)
+# Lead procedure (pr-review-auto)
 
 You lead the review of one GitHub pull request. You start a reviewer and an architect, verify
 what they find, post the result on GitHub under the user's own account, and report the result.
@@ -25,15 +25,15 @@ action on GitHub.
 - `--include-merged`: review a merged or closed PR anyway, as a preview (step 1 item 7).
 - `--full-review`: review the PR from scratch as a first review, even when it already has notes
   or threads of ours; only with `dry_run: true` (step 1 item 4, step 2).
-- The CLI: `pr-review` below means the absolute path of `scripts/pr-review` in this skill's
+- The CLI: `pr-review-auto` below means the absolute path of `scripts/pr-review-auto` in this skill's
   directory; run it by that path. Every GitHub write goes through
-  `pr-review gh <repo> <PR> <action>`, and every team action through the CLI as shown below.
+  `pr-review-auto gh <repo> <PR> <action>`, and every team action through the CLI as shown below.
   Reading GitHub directly is allowed only with the two `gh` commands in step 1.
 - `<prompts>`: this skill's `prompts/` directory. It holds the task templates
   `<prompts>/reviewer-task.md` and `<prompts>/architect-task.md`, the comment-style rules
   `<prompts>/comment-style.md`, and the configure procedure `<prompts>/configure.md`.
-- The repository config: `<home>/<repo>/config.yaml`, where `<home>` is `$PR_REVIEW_HOME`, or
-  `~/.claude/pr-review` when that is unset. You need `skip_paths`, `blocking_threshold` (one of
+- The repository config: `<home>/<repo>/config.yaml`, where `<home>` is `$PR_REVIEW_AUTO_HOME`, or
+  `~/.claude/pr-review-auto` when that is unset. You need `skip_paths`, `blocking_threshold` (one of
   low, medium, high, critical), `unrelated_change_lines` and `dry_run`; a key the file lacks
   takes its default (`[]`, `medium`, `200`, `true`).
 - The PR's state paths, printed by `paths` in step 1: `<notes>` (the notes file; it may not
@@ -74,18 +74,18 @@ action on GitHub.
 
 1. This procedure needs a herdr pane: if `$HERDR_PANE_ID` is empty, tell the user that this
    skill must run inside a herdr pane, and stop.
-2. Run `pr-review paths <repo> <PR>`. On exit 0 it prints
+2. Run `pr-review-auto paths <repo> <PR>`. On exit 0 it prints
    `{"pr_dir", "notes", "runs", "reports"}`: these are `<notes>`, `<runs>` and `<reports>`.
    - It exits 3 when `<repo>` has no repository config, and 1 when the config cannot be read
      (stderr says why). Then:
      - With `--supervisor`: report `needs-config` (**Report**; summary: the problem, and
-       "run `/pr-review <repo> <PR>` once to set up the repository config") and stop. In this
+       "run `/pr-review-auto <repo> <PR>` once to set up the repository config") and stop. In this
        case never ask the user anything and never follow `configure.md`: no one is watching
        this pane, and a question would hang the run.
      - Without `--supervisor`: follow `<prompts>/configure.md` with the user to create or fix
        the config, then run this item again.
    - It exits 2 when `<repo>` is not `owner/name`: stop as in **When you cannot continue**.
-3. Run `pr-review validate <repo>`. It prints one line per problem and exits 1 when there is
+3. Run `pr-review-auto validate <repo>`. It prints one line per problem and exits 1 when there is
    any (the repository unreachable or not writable for the `gh` account, a team harness
    missing, a persona file missing, a bad value). On problems, handle them like a config that
    cannot be read in item 2: with `--supervisor`, report `needs-config` (**Report**) with the
@@ -95,7 +95,7 @@ action on GitHub.
    not review: go to **When you cannot continue** with the message "--full-review needs
    dry_run: true (it would duplicate the existing review comments)". Nothing is posted or reset,
    and no lock is held yet.
-5. Choose `<holder>` and run `pr-review lock <repo> <PR> --holder <holder>`. It prints
+5. Choose `<holder>` and run `pr-review-auto lock <repo> <PR> --holder <holder>`. It prints
    `{"locked": true}`, or `{"busy": true, ...}` with the other run's `holder` and `since`. On
    `{"busy": true, ...}`, another run is working on this PR: report `busy` (**Report**; you do
    not hold the lock, so **Report** item 1 does nothing) and stop. Without `--supervisor`,
@@ -103,23 +103,23 @@ action on GitHub.
    the config's `lock_stale_after` (default `3h`). From here on, every exit ends with
    **Report**, which releases the lock.
 6. If `--decision` is given, record it in the notes:
-   `pr-review decide <repo> <PR> "<decision text>"` (quote the text safely as one argument).
+   `pr-review-auto decide <repo> <PR> "<decision text>"` (quote the text safely as one argument).
    Step 9 applies it.
-7. Run `pr-review pr-state <repo> <PR>`. It prints `{"state", "head", "author", "is_own"}`.
+7. Run `pr-review-auto pr-state <repo> <PR>`. It prints `{"state", "head", "author", "is_own"}`.
    If `state` is `MERGED` or `CLOSED`:
-   - Without `--include-merged`, run `pr-review drop-branch <repo> <PR> --checkout <checkout>`,
+   - Without `--include-merged`, run `pr-review-auto drop-branch <repo> <PR> --checkout <checkout>`,
      report `merged` or `closed` (**Report**), and stop: nothing else is done for a finished PR.
    - With `--include-merged`, continue this run as a preview: every step runs as for an open PR,
      and the CLI records each write in the notes instead of posting it (see Rules). Step 10
      says how a preview ends.
-8. Run `pr-review review-state <repo> <PR>`. It prints `last_reviewed_head`, `saved_reports`
+8. Run `pr-review-auto review-state <repo> <PR>`. It prints `last_reviewed_head`, `saved_reports`
    and `status` from the notes (null when absent). If `status` is `approved` and
    `last_reviewed_head` equals the PR's `head` from item 7 (not with `--full-review`), this head is already approved: report
    `no-action` (**Report**; summary "already approved at <head>") and stop. Never approve it
    again.
-9. Run `pr-review checkout <repo> <PR> --checkout <checkout>`. It detaches `<checkout>`,
+9. Run `pr-review-auto checkout <repo> <PR> --checkout <checkout>`. It detaches `<checkout>`,
    discards every uncommitted and untracked file in it (`git reset --hard`, `git clean -fdx`),
-   fetches the PR into branch `pr-review/<PR>`, checks that commit out, detached (so no
+   fetches the PR into branch `pr-review-auto/<PR>`, checks that commit out, detached (so no
    worktree holds the branch), and prints the head commit SHA: this is HEAD for the whole run.
    Pass it as `--commit <HEAD>` (the full SHA) to `post-review` and `approve`: comments are
    anchored on, and approval given for, the commit your team reviewed, even if the author
@@ -134,7 +134,7 @@ action on GitHub.
     `--name-only` and its size with `--numstat`.
 12. Find the account login:
     `gh auth status --active --hostname github.com --json hosts --jq '.hosts["github.com"][0].login'`.
-13. Run `pr-review gh <repo> <PR> threads`. It prints
+13. Run `pr-review-auto gh <repo> <PR> threads`. It prints
     `{"threads": [...], "issue_comments": [...], "reviews": [...]}`. Each thread has `id`,
     `isResolved`, `isOutdated`, `path`, `line`, `url` (the thread link) and `comments`
     (`author`, `body`, `createdAt`). A thread whose first comment's author is the login is
@@ -148,7 +148,7 @@ action on GitHub.
   and never change or reply to them. Replace any existing notes file with a fresh one (it lives
   in the dry-run directory, so only dry-run state is replaced; this also clears its
   `## Dry run actions`). The team and the cross-review run as in any first review, every write
-  goes through `pr-review gh` (recorded in the notes), and the result and report use
+  goes through `pr-review-auto gh` (recorded in the notes), and the result and report use
   `dry_run=true`. The rules below do not apply.
 - The notes file exists (a file holding only a `## Decision` section does not count):
   **follow-up**. The notes are the source of truth for what we already posted; a first review
@@ -205,7 +205,7 @@ to files; you fill their task templates and start them. In a follow-up with noth
 `<prompts>/architect-task.md`) with every placeholder replaced (a placeholder is a key name in
 double curly braces) to `<runs>/<agent>-task.md`:
 
-- PR, REPO, CHECKOUT: `<PR>`, `<repo>`, `<checkout>`. CLI: the absolute path that `pr-review`
+- PR, REPO, CHECKOUT: `<PR>`, `<repo>`, `<checkout>`. CLI: the absolute path that `pr-review-auto`
   stands for. LEAD: your pane ID (`$HERDR_PANE_ID`).
 - BASE and HEAD: from step 1, full SHAs.
 - MODE: `first-review` or `follow-up`.
@@ -232,12 +232,12 @@ it, so run each spawn from the checkout, in one command. Spawn the reviewer firs
 architect (spawn only the members you need):
 
 ```bash
-cd <checkout> && pr-review spawn <repo> <PR> reviewer
-cd <checkout> && pr-review spawn <repo> <PR> architect
+cd <checkout> && pr-review-auto spawn <repo> <PR> reviewer
+cd <checkout> && pr-review-auto spawn <repo> <PR> architect
 ```
 
 Each prints the agent name. Write its task file, then send it
-`pr-review notify <agent> "Read and follow the task in <task file path>"`.
+`pr-review-auto notify <agent> "Read and follow the task in <task file path>"`.
 
 **Wait** until every member has sent `report <path>`: end your turn; each report arrives as a
 message. Then read each report file. If a member says it could not finish, fix the cause in its
@@ -252,11 +252,11 @@ reads the architect's report and the architect reads the reviewer's.
 
 1. **Critique.** Start only after every member has sent `report <path>`. Send each member the
    other member's report path and its critique file:
-   `pr-review notify <agent> "critique <report path> into <runs>/<agent>-critique.md"`.
+   `pr-review-auto notify <agent> "critique <report path> into <runs>/<agent>-critique.md"`.
    Wait (end your turn, as in step 4) until every member has replied `critique <path>`.
 2. **Revise.** Start only after every member has replied `critique <path>`. Send each member
    the other member's critique of its report:
-   `pr-review notify <agent> "revise <critique path>"`. Each member revises its own report file
+   `pr-review-auto notify <agent> "revise <critique path>"`. Each member revises its own report file
    in place. Wait until every member has replied `revised <path>`.
 3. **Save.** Only after every member has replied `revised <path>`, read each final report, then
    create `<reports>/<reviewed-sha>/` (reviewed-sha: HEAD from step 1, the full SHA) and copy
@@ -312,7 +312,7 @@ decision); its replies are written in step 9.
    step 7 draft. Post them all at once:
 
    ```bash
-   pr-review gh <repo> <PR> post-review --commit <HEAD> <<'EOF'
+   pr-review-auto gh <repo> <PR> post-review --commit <HEAD> <<'EOF'
    {"comments": [{"path": "a.cpp", "line": 12, "side": "RIGHT", "body": "..."},
                  {"path": "b.hpp", "subject_type": "file", "body": "..."}]}
    EOF
@@ -320,7 +320,7 @@ decision); its replies are written in step 9.
 
    Line comments go out as one review of type `COMMENT`, each in its own thread. It prints
    `{"thread_ids": [...]}`. Match each new thread to its finding by path, line and body from
-   `pr-review gh <repo> <PR> threads`, and record its ID and `url` in the notes.
+   `pr-review-auto gh <repo> <PR> threads`, and record its ID and `url` in the notes.
    If it exits 1 printing `{"error", "review_id", "comment_ids", "thread_ids"}`, part was
    posted: do not post everything again. A non-null `review_id` means every line comment went
    out; `comment_ids` holds the file-level comments posted, in input order. Record what was
@@ -329,7 +329,7 @@ decision); its replies are written in step 9.
 2. A blocking finding tied to no changed file: its own standalone comment, body on stdin:
 
    ```bash
-   pr-review gh <repo> <PR> comment <<'EOF'
+   pr-review-auto gh <repo> <PR> comment <<'EOF'
    ...
    EOF
    ```
@@ -338,7 +338,7 @@ decision); its replies are written in step 9.
 3. Non-blocking findings: all in one standalone comment, one item per issue, the same way.
    They are not tracked and do not affect approval.
 4. First review only: if there are no blocking findings, approve now with
-   `pr-review gh <repo> <PR> approve --commit <HEAD>`. If it prints `{"skipped": "own-pr"}`,
+   `pr-review-auto gh <repo> <PR> approve --commit <HEAD>`. If it prints `{"skipped": "own-pr"}`,
    the PR is the user's own: count it as approved anyway. If it prints
    `{"skipped": "head-moved"}`, the author pushed commits we have not reviewed: it did not
    approve, so do not count it as approved, and say so in the notes' log line. The notes
@@ -349,7 +349,7 @@ Result: `approved` if you approved, otherwise `reviewed`.
 
 ## 9. Act on GitHub: follow-up
 
-Reply with `pr-review gh <repo> <PR> reply <thread-id>` (body on stdin), and change a thread
+Reply with `pr-review-auto gh <repo> <PR> reply <thread-id>` (body on stdin), and change a thread
 with `resolve <thread-id>` or `unresolve <thread-id>`. Keep each reply short: follow the tone
 and wording rules of `<prompts>/comment-style.md`, not its two-paragraph shape for findings.
 Per thread you checked:
@@ -396,7 +396,7 @@ the PR, the thread link (the thread's `url`, as in the notes' Link column; or th
 range), the author's position and ours.
 
 **Approve** when every blocking thread and standalone item is `addressed` or
-`accepted-author-view` and nothing is escalated: `pr-review gh <repo> <PR> approve --commit <HEAD>`
+`accepted-author-view` and nothing is escalated: `pr-review-auto gh <repo> <PR> approve --commit <HEAD>`
 (`{"skipped": "own-pr"}` counts as approved; `{"skipped": "head-moved"}` does not, as in step 8
 item 4).
 
@@ -415,9 +415,9 @@ result is `reviewed` instead, and never set `Status: approved`.
    handled a `## Decision` (applied it, or escalated again quoting it), copy the decision into
    the entry of the escalation it answered (`Decision applied:`), then remove the `## Decision`
    section, so the next run does not apply it again.
-2. Close each member still open: `pr-review member-close <agent>`.
+2. Close each member still open: `pr-review-auto member-close <agent>`.
 3. If the result is `approved`, or this run is a preview (`--include-merged` on a merged or
-   closed PR), delete the PR branch: `pr-review drop-branch <repo> <PR> --checkout <checkout>`.
+   closed PR), delete the PR branch: `pr-review-auto drop-branch <repo> <PR> --checkout <checkout>`.
 4. Go to **Report**.
 
 ## Report
@@ -426,14 +426,14 @@ Every run ends here with exactly one result, and every exit after `lock` succeed
 this section, so the lock is always released.
 
 1. If you hold the lock (step 1 item 5 printed `{"locked": true}`), release it:
-   `pr-review unlock <repo> <PR> --holder <holder>`.
+   `pr-review-auto unlock <repo> <PR> --holder <holder>`.
 2. If this run checked out the PR (step 1 item 9), delete the branches of PRs merged, closed
-   or approved since: `pr-review cleanup <repo> --checkout <checkout>`. This step is not fatal:
+   or approved since: `pr-review-auto cleanup <repo> --checkout <checkout>`. This step is not fatal:
    whatever it prints or exits with, do not retry it, and do not change the result; go on.
 3. With `--supervisor`, send it one message, quoting the text safely as one argument:
 
    ```bash
-   pr-review notify <supervisor> "done <PR> <result> head=<sha|none> dry_run=<true|false> [summary]"
+   pr-review-auto notify <supervisor> "done <PR> <result> head=<sha|none> dry_run=<true|false> [summary]"
    ```
 
    - `<result>`: one of the results below.
@@ -449,7 +449,7 @@ this section, so the lock is always released.
 4. Without `--supervisor`, tell the user in this session: the result, the head, whether it was
    a dry run (in a dry run the would-be comments are in `<notes>`, under `## Dry run actions`;
    a preview counts as a dry run), and the summary. For `escalated`, also say how to answer:
-   `/pr-review <repo> <PR> --decision "<answer>"`.
+   `/pr-review-auto <repo> <PR> --decision "<answer>"`.
 
 Results:
 
@@ -495,8 +495,8 @@ If a command fails, retry it once. If it still fails, or a member cannot finish 
 second task, stop. If anything was posted, record it in the notes, and list the verified
 findings not yet posted under `## Unposted` (create no notes file if nothing was posted, so a
 retry is a first review again). If you hold the lock, release it:
-`pr-review unlock <repo> <PR> --holder <holder>`. If this run checked out the PR, run
-`pr-review cleanup <repo> --checkout <checkout>` as in **Report** item 2. Leave the member
+`pr-review-auto unlock <repo> <PR> --holder <holder>`. If this run checked out the PR, run
+`pr-review-auto cleanup <repo> --checkout <checkout>` as in **Report** item 2. Leave the member
 panes open so the problem can be inspected. Then print the problem in your pane. With
 `--supervisor`, do not report `done`: the supervisor flags the run as stalled and the user
 decides. Without it, tell the user the problem.

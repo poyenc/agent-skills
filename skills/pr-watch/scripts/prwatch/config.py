@@ -12,7 +12,7 @@ from . import proc
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,9}$")
 HARNESSES = ("claude", "pi")
-LEAD_INVOKE = {"claude": "/pr-review", "pi": "/skill:pr-review"}  # pi: /skill:<name> (pi docs, skills.md)
+LEAD_INVOKE = {"claude": "/pr-review-auto", "pi": "/skill:pr-review-auto"}  # pi: /skill:<name> (pi docs, skills.md)
 PATH_KEYS = ("checkout", "persona_dir")
 DURATION_UNITS = {"m": "minutes", "h": "hours", "d": "days"}
 LOOP_EXPIRY = datetime.timedelta(days=7)  # Claude Code deletes recurring cron jobs after 7 days

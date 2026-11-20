@@ -40,7 +40,7 @@ def _done_section() -> str:
 
 
 def test_prompt_files_are_the_supervisors_own():
-    # lead, reviewer-task, architect-task and comment-style moved to the pr-review skill.
+    # lead, reviewer-task, architect-task and comment-style moved to the pr-review-auto skill.
     assert set(_prompts()) == OWN_PROMPTS
 
 
@@ -82,8 +82,8 @@ def test_skill_md_makes_session_the_supervisor():
 
 def test_skill_md_reminds_pr_review_setup_first():
     text = _flat(_skill_md())
-    assert "the `pr-review` skill" in text
-    assert "run `/pr-review <owner>/<repo> <PR>` once per repository" in text
+    assert "the `pr-review-auto` skill" in text
+    assert "run `/pr-review-auto <owner>/<repo> <PR>` once per repository" in text
     assert "`needs-config`" in text
 
 
@@ -178,7 +178,7 @@ def test_supervisor_done_ends_stall():
 def test_supervisor_handles_needs_config():
     done = _done_section()
     item = _section(done, "- `needs-config`", "- `busy`")
-    assert "run /pr-review once for <repo>" in item
+    assert "run /pr-review-auto once for <repo>" in item
     assert "the next fire retries" in item
     assert "Open no further PR this fire" in item
 
@@ -226,7 +226,7 @@ def test_supervisor_no_branch_or_notes_handling():
     for forbidden in ("cleanup", "branch", "notes", "Decision section", "pr-watch/<pr>",
                       "pr-watch/<N>"):
         assert forbidden not in text, forbidden
-    assert ("never run the `pr-review` skill's commands or read or write its files"
+    assert ("never run the `pr-review-auto` skill's commands or read or write its files"
             in text)
 
 
@@ -292,7 +292,7 @@ def test_example_config_shows_lead_default_as_comment():
 
 def test_configure_reminds_pr_review_setup_first():
     text = _flat(_prompts()["configure.md"])
-    assert "run `/pr-review <owner>/<repo> <PR>` once" in text
+    assert "run `/pr-review-auto <owner>/<repo> <PR>` once" in text
     assert "`needs-config`" in text
 
 

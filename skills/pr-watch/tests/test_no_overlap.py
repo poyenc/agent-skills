@@ -1,20 +1,20 @@
-"""pr-watch shares no code or files with pr-review, writes nothing to GitHub and runs no repository
+"""pr-watch shares no code or files with pr-review-auto, writes nothing to GitHub and runs no repository
 git commands. Scans the pr-watch scripts, and the prompts, SKILL.md and examples."""
 import re
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS = SKILL_DIR / "scripts"
-FORBIDDEN = ("prreview", "pr-review/", "notes.md", "gh api", "gh pr review", "git ")
+FORBIDDEN = ("prreview", "pr-review-auto/", "notes.md", "gh api", "gh pr review", "git ")
 # Only the scanner's read-only GitHub listing (gh pr list/view, the GraphQL activity query, the
 # gh account's login) lives in scan.py; config.py's validate probes the repo and the checkout;
 # proc.py is the subprocess wrapper.
 READ_ONLY_FILES = {"scan.py", "config.py", "proc.py"}
 GITHUB_OR_GIT_ARGV = re.compile(r'"(?:gh|git)"')
-# The only mentions of pr-review allowed in the prompts, SKILL.md and examples: the lead's
-# invocation prefix (`/pr-review`, `/skill:pr-review`, which also covers the user's one-time
-# `/pr-review <owner>/<repo> <PR>`), and plain statements about "the `pr-review` skill".
-ALLOWED_PR_REVIEW = re.compile(r"/(?:skill:)?pr-review\b(?!/)|`pr-review` skill")
+# The only mentions of pr-review-auto allowed in the prompts, SKILL.md and examples: the lead's
+# invocation prefix (`/pr-review-auto`, `/skill:pr-review-auto`, which also covers the user's one-time
+# `/pr-review-auto <owner>/<repo> <PR>`), and plain statements about "the `pr-review-auto` skill".
+ALLOWED_PR_REVIEW = re.compile(r"/(?:skill:)?pr-review-auto\b(?!/)|`pr-review-auto` skill")
 
 
 def sources():
@@ -61,14 +61,14 @@ def test_docs_mention_pr_review_only_as_allowed():
     for path in docs():
         rest = ALLOWED_PR_REVIEW.sub("", " ".join(path.read_text().split()))
         offenders += [(path.name, rest[max(0, m.start() - 40):m.end() + 40])
-                      for m in re.finditer("pr-review", rest)]
+                      for m in re.finditer("pr-review-auto", rest)]
     assert offenders == []
 
 
 def test_allowance_rejects_pr_review_commands_and_paths():
-    for bad in ("run `pr-review validate o/r`", "pr-review cleanup o/r", "~/.claude/pr-review/o/r",
-                "/pr-review/9187", "the pr-review config"):
-        assert "pr-review" in ALLOWED_PR_REVIEW.sub("", bad), bad
-    for good in ("`/pr-review o/r 1 --checkout p`", "`/skill:pr-review`",
-                 "run `/pr-review <owner>/<repo> <PR>` once", "leads use the `pr-review` skill"):
-        assert "pr-review" not in ALLOWED_PR_REVIEW.sub("", good), good
+    for bad in ("run `pr-review-auto validate o/r`", "pr-review-auto cleanup o/r", "~/.claude/pr-review-auto/o/r",
+                "/pr-review-auto/9187", "the pr-review-auto config"):
+        assert "pr-review-auto" in ALLOWED_PR_REVIEW.sub("", bad), bad
+    for good in ("`/pr-review-auto o/r 1 --checkout p`", "`/skill:pr-review-auto`",
+                 "run `/pr-review-auto <owner>/<repo> <PR>` once", "leads use the `pr-review-auto` skill"):
+        assert "pr-review-auto" not in ALLOWED_PR_REVIEW.sub("", good), good

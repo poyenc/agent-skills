@@ -3,7 +3,7 @@ name: pr-watch
 description: >
   Watch a GitHub repository for pull requests matching the user's interest and have each one
   reviewed: this session becomes the supervisor, which scans the repository on a schedule and
-  starts a lead agent per PR in a tab of its own herdr workspace; each lead uses the `pr-review`
+  starts a lead agent per PR in a tab of its own herdr workspace; each lead uses the `pr-review-auto`
   skill and reports back when it finishes. Use when the user asks to set up, change, start, stop
   or check on a watcher, to watch a repo for PRs, to review PRs automatically on a schedule, or
   to change a watcher's interest criteria, schedule or lead settings. Trigger on "pr-watch",
@@ -27,8 +27,8 @@ use it, otherwise ask.
 
 ## Before the first watcher on a repository
 
-Every lead uses the `pr-review` skill, which keeps its own config per repository (review team,
-blocking threshold, dry run). The user must run `/pr-review <owner>/<repo> <PR>` once per
+Every lead uses the `pr-review-auto` skill, which keeps its own config per repository (review team,
+blocking threshold, dry run). The user must run `/pr-review-auto <owner>/<repo> <PR>` once per
 repository first, which asks for that config and creates it. A lead started for a repository
 without one stops at once and reports `needs-config`; the supervisor asks the user to do this
 and retries the PR on the next fire. Remind the user of this when setting up a watcher.
@@ -44,7 +44,7 @@ validates a candidate config with `pr-watch validate <name>` before moving it in
 
 1. If there is no config for `<name>`, configure it first (above).
 2. Run `pr-watch validate <name>`; stop and report if it prints problems.
-3. Remind the user that each repository needs its one-time `/pr-review` setup (above).
+3. Remind the user that each repository needs its one-time `/pr-review-auto` setup (above).
 4. Read `prompts/supervisor.md`. From now on this session is the supervisor and follows it.
 5. Schedule the loop: run `/loop <every> pr-watch-fire <name> cli=<path>`, with `<every>` the
    config's `schedule.every` and `<path>` the absolute path of `scripts/pr-watch`. `/loop` runs
@@ -78,7 +78,7 @@ cap (`tab-open --ignore-cap`) and is not counted.
 
 ## Dry run
 
-Dry run is a setting of the `pr-review` skill, per repository. The record keeps, for each PR,
+Dry run is a setting of the `pr-review-auto` skill, per repository. The record keeps, for each PR,
 whether its last result was a dry run. After the user turns dry run off there, run
 `pr-watch forget-dry-run <name>` (or ask the supervisor to): it clears the stored result of
 every PR whose last result was a dry run, so each gets a real review on the next fire. Merged,
@@ -94,8 +94,8 @@ holds a lead (`orchestrator` persona, `team.lead` settings; the key is optional 
 harness `claude`, model `Claude-Sonnet-5.5[1m]`, effort `high`, each key replaced on its own, and a
 changed harness needs a model) started with
 `<invoke> <owner>/<repo> <PR> --checkout <checkout> --supervisor <pane> [--interest <text>] [--decision <text>]`,
-where `<invoke>` is `/pr-review` for claude and `/skill:pr-review` for pi (`team.lead.invoke`
-overrides it). The lead reviews the PR with the `pr-review` skill and messages the supervisor
+where `<invoke>` is `/pr-review-auto` for claude and `/skill:pr-review-auto` for pi (`team.lead.invoke`
+overrides it). The lead reviews the PR with the `pr-review-auto` skill and messages the supervisor
 `done <PR> <result> head=<sha|none> dry_run=<true|false> [summary]`; the supervisor closes the
 tab, records the result, shows escalations to the user and stores the user's answer for the next
 lead on that PR. This skill itself makes no GitHub writes, keeps no per-PR notes and handles no
@@ -108,7 +108,7 @@ branches.
 - `gh` authenticated with write access to the repository; `pr-watch validate` checks it.
 - The lead's harness installed (`claude`, or `pi`).
 - The lead persona `orchestrator/system-prompt.md` under `persona_dir`.
-- The `pr-review` skill installed for the lead's harness, and set up once for the repository.
+- The `pr-review-auto` skill installed for the lead's harness, and set up once for the repository.
 - A dedicated worktree for `checkout`: every lead discards its uncommitted and untracked files.
 
 ## CLI reference

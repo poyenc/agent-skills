@@ -70,13 +70,13 @@ def test_checkout_creates_branch(tmp_path, origin, write_config, capsys):
     expected = git(origin, "rev-parse", "refs/pull/7/head")
     assert cli.main(["checkout", REPO, "7", *checkout_args(tmp_path)]) == 0
     assert git(checkout, "rev-parse", "--abbrev-ref", "HEAD") == "HEAD"  # detached
-    assert git(checkout, "rev-parse", "pr-review/7") == expected
+    assert git(checkout, "rev-parse", "pr-review-auto/7") == expected
     assert git(checkout, "rev-parse", "HEAD") == expected
     assert capsys.readouterr().out.strip() == expected
 
 
 def test_sibling_worktree_can_reuse_the_pr_branch(tmp_path, origin, write_config, fake, capsys):
-    """Linked worktrees share refs/heads: a checkout in one must not hold pr-review/<N>."""
+    """Linked worktrees share refs/heads: a checkout in one must not hold pr-review-auto/<N>."""
     write_config()
     checkout = tmp_path / "checkout"
     sibling = tmp_path / "sibling"
@@ -87,13 +87,13 @@ def test_sibling_worktree_can_reuse_the_pr_branch(tmp_path, origin, write_config
     assert cli.main(["checkout", REPO, "7", *sibling_args]) == 0
     assert git(sibling, "rev-parse", "HEAD") == new_head
     assert cli.main(["drop-branch", REPO, "7", *sibling_args]) == 0
-    assert git(checkout, "branch", "--list", "pr-review/*") == ""
+    assert git(checkout, "branch", "--list", "pr-review-auto/*") == ""
     assert cli.main(["checkout", REPO, "7", *checkout_args(tmp_path)]) == 0
     fake({"gh": [pr_view("MERGED")]})
     capsys.readouterr()
     assert cli.main(["cleanup", REPO, *sibling_args]) == 0
     assert json.loads(capsys.readouterr().out) == [7]
-    assert git(checkout, "branch", "--list", "pr-review/*") == ""
+    assert git(checkout, "branch", "--list", "pr-review-auto/*") == ""
 
 
 def test_checkout_force_pushed_current_branch(tmp_path, origin, write_config, capsys):
@@ -104,7 +104,7 @@ def test_checkout_force_pushed_current_branch(tmp_path, origin, write_config, ca
     capsys.readouterr()
     assert cli.main(["checkout", REPO, "7", *checkout_args(tmp_path)]) == 0
     assert git(checkout, "rev-parse", "HEAD") == new_head
-    assert git(checkout, "rev-parse", "pr-review/7") == new_head
+    assert git(checkout, "rev-parse", "pr-review-auto/7") == new_head
     assert capsys.readouterr().out.strip() == new_head
 
 
@@ -194,7 +194,7 @@ def test_drop_branch_and_cleanup_refuse_an_origin_of_another_repository(tmp_path
     git(checkout, "remote", "set-url", "origin", "git@github.com:someone/else.git")
     assert cli.main(["drop-branch", REPO, "7", *checkout_args(tmp_path)]) == 1
     assert cli.main(["cleanup", REPO, *checkout_args(tmp_path)]) == 1
-    assert "pr-review/7" in branches(checkout)
+    assert "pr-review-auto/7" in branches(checkout)
 
 
 def test_checkout_requires_the_checkout_path(write_config):
@@ -219,11 +219,11 @@ def test_drop_branch_current_and_missing(tmp_path, origin, write_config):
     checkout = tmp_path / "checkout"
     assert cli.main(["checkout", REPO, "7", *checkout_args(tmp_path)]) == 0
     assert cli.main(["drop-branch", REPO, "7", *checkout_args(tmp_path)]) == 0  # detached
-    assert git(checkout, "branch", "--list", "pr-review/*") == ""
+    assert git(checkout, "branch", "--list", "pr-review-auto/*") == ""
     assert cli.main(["checkout", REPO, "7", *checkout_args(tmp_path)]) == 0
-    git(checkout, "checkout", "-q", "pr-review/7")  # left current by an older version
+    git(checkout, "checkout", "-q", "pr-review-auto/7")  # left current by an older version
     assert cli.main(["drop-branch", REPO, "7", *checkout_args(tmp_path)]) == 0
-    assert git(checkout, "branch", "--list", "pr-review/*") == ""
+    assert git(checkout, "branch", "--list", "pr-review-auto/*") == ""
     assert cli.main(["drop-branch", REPO, "8", *checkout_args(tmp_path)]) == 0
 
 
@@ -234,22 +234,22 @@ def test_drop_branch_leaves_head_when_not_the_target(tmp_path, origin, write_con
     git(checkout, "checkout", "-q", "main")
     assert cli.main(["drop-branch", REPO, "7", *checkout_args(tmp_path)]) == 0
     assert git(checkout, "rev-parse", "--abbrev-ref", "HEAD") == "main"
-    assert git(checkout, "branch", "--list", "pr-review/*") == ""
+    assert git(checkout, "branch", "--list", "pr-review-auto/*") == ""
 
 
 def test_drop_branch_never_touches_other_branches(tmp_path, origin, write_config):
     write_config()
     checkout = tmp_path / "checkout"
-    for name in ("feature/x", "pr-review/70", "pr-watch/7"):
+    for name in ("feature/x", "pr-review-auto/70", "pr-watch/7"):
         git(checkout, "branch", name)
     assert cli.main(["drop-branch", REPO, "7", *checkout_args(tmp_path)]) == 0
-    assert branches(checkout) == ["feature/x", "main", "pr-review/70", "pr-watch/7"]
+    assert branches(checkout) == ["feature/x", "main", "pr-review-auto/70", "pr-watch/7"]
 
 
 def test_cleanup_deletes_only_finished_pr_branches(tmp_path, origin, write_config, fake, capsys):
     write_config()
     checkout = tmp_path / "checkout"
-    for name in ("pr-review/1", "pr-review/2", "pr-review/3", "feature/x"):
+    for name in ("pr-review-auto/1", "pr-review-auto/2", "pr-review-auto/3", "feature/x"):
         git(checkout, "branch", name)
     notes = tmp_path / "home" / "o" / "r-dry-run" / "2" / "notes.md"
     notes.parent.mkdir(parents=True)
@@ -257,7 +257,7 @@ def test_cleanup_deletes_only_finished_pr_branches(tmp_path, origin, write_confi
     calls = fake({"gh": [pr_view("MERGED", number="1"), pr_view("OPEN", number="3")]})
     assert cli.main(["cleanup", REPO, *checkout_args(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out) == [1, 2]
-    assert branches(checkout) == ["feature/x", "main", "pr-review/3"]
+    assert branches(checkout) == ["feature/x", "main", "pr-review-auto/3"]
     assert not any(argv[2:3] == ["2"] for argv in calls.of("gh"))  # approved needs no gh call
 
 
@@ -269,41 +269,41 @@ def test_cleanup_closed_pr_and_detaches_current(tmp_path, origin, write_config, 
     capsys.readouterr()
     assert cli.main(["cleanup", REPO, *checkout_args(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out) == [7]
-    assert git(checkout, "branch", "--list", "pr-review/*") == ""
+    assert git(checkout, "branch", "--list", "pr-review-auto/*") == ""
 
 
 def test_cleanup_ignores_non_numeric_pr_review_branches(tmp_path, origin, write_config, fake, capsys):
     write_config()
     checkout = tmp_path / "checkout"
-    for name in ("pr-review/abc", "pr-review/01x", "pr-review/-1"):
+    for name in ("pr-review-auto/abc", "pr-review-auto/01x", "pr-review-auto/-1"):
         git(checkout, "branch", name)
     fake({"gh": [pr_view("MERGED")]})
     assert cli.main(["cleanup", REPO, *checkout_args(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out) == []
-    assert branches(checkout) == ["main", "pr-review/-1", "pr-review/01x", "pr-review/abc"]
+    assert branches(checkout) == ["main", "pr-review-auto/-1", "pr-review-auto/01x", "pr-review-auto/abc"]
 
 
 def test_cleanup_continues_past_an_undeletable_branch(tmp_path, origin, write_config, fake, capsys):
     write_config()
     checkout = tmp_path / "checkout"
-    for name in ("pr-review/1", "pr-review/2"):
+    for name in ("pr-review-auto/1", "pr-review-auto/2"):
         git(checkout, "branch", name)
-    git(checkout, "worktree", "add", "-q", str(tmp_path / "holder"), "pr-review/1")  # holds it
+    git(checkout, "worktree", "add", "-q", str(tmp_path / "holder"), "pr-review-auto/1")  # holds it
     fake({"gh": [pr_view("MERGED")]})
     assert cli.main(["cleanup", REPO, *checkout_args(tmp_path)]) == 1
     out, err = capsys.readouterr()
     assert json.loads(out) == [2]
-    assert "keeping pr-review/1" in err
-    assert branches(checkout) == ["main", "pr-review/1"]
+    assert "keeping pr-review-auto/1" in err
+    assert branches(checkout) == ["main", "pr-review-auto/1"]
 
 
 def test_cleanup_keeps_branch_when_gh_fails(tmp_path, origin, write_config, fake, capsys):
     write_config()
     checkout = tmp_path / "checkout"
-    git(checkout, "branch", "pr-review/4")
+    git(checkout, "branch", "pr-review-auto/4")
     fake({"gh": [{"match": ["pr", "view"], "exit": 1, "stderr": "boom"}]})
     assert cli.main(["cleanup", REPO, *checkout_args(tmp_path)]) == 1
-    assert "pr-review/4" in branches(checkout)
+    assert "pr-review-auto/4" in branches(checkout)
     assert json.loads(capsys.readouterr().out) == []
 
 

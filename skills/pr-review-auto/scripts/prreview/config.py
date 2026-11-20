@@ -45,7 +45,7 @@ class BadRepository(ValueError):
 
 
 def home() -> Path:
-    return Path(os.environ.get("PR_REVIEW_HOME", "~/.claude/pr-review")).expanduser()
+    return Path(os.environ.get("PR_REVIEW_AUTO_HOME", "~/.claude/pr-review-auto")).expanduser()
 
 
 def repo_dir(repo: str) -> Path:

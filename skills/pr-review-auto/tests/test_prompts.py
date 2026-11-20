@@ -15,10 +15,10 @@ KEYS = {
     "architect-task.md": {"PR", "REPO", "CHECKOUT", "BASE", "HEAD", "FILES", "SUMMARY",
                           "MODE", "THREADS", "SAVED_REPORTS", "REPORT_PATH", "LEAD", "CLI"},
 }
-COMMAND_RE = re.compile(r"(?:\bpr-review|\{\{CLI\}\}) ([a-z][a-z-]*)")
+COMMAND_RE = re.compile(r"(?:\bpr-review-auto|\{\{CLI\}\}) ([a-z][a-z-]*)")
 RESULTS = ("reviewed", "approved", "escalated", "no-action", "not-interesting", "merged", "closed",
            "needs-config", "busy")
-DONE = 'pr-review notify <supervisor> "done <PR> <result> head=<sha|none> dry_run=<true|false> [summary]"'
+DONE = 'pr-review-auto notify <supervisor> "done <PR> <result> head=<sha|none> dry_run=<true|false> [summary]"'
 
 
 def _prompts() -> dict[str, str]:
@@ -63,24 +63,24 @@ def test_command_check_covers_cli_calls():
     assert "notify" in found["reviewer-task.md"] and "notify" in found["architect-task.md"]
     assert "validate" in found["configure.md"]
     assert COMMAND_RE.findall("run `{{CLI}} bogus x`") == ["bogus"]
-    assert COMMAND_RE.findall("run `pr-review bogus x`") == ["bogus"]
+    assert COMMAND_RE.findall("run `pr-review-auto bogus x`") == ["bogus"]
 
 
 def test_skill_md_lists_every_subcommand():
     text = _skill_md()
-    missing = [n for n in cli.subcommand_names(cli.build_parser()) if f"`pr-review {n}" not in text]
+    missing = [n for n in cli.subcommand_names(cli.build_parser()) if f"`pr-review-auto {n}" not in text]
     assert not missing, f"SKILL.md lacks: {missing}"
 
 
 def test_skill_md_invocation_and_checkout_warning():
     text = _flat(_skill_md())
-    assert ("/pr-review <owner>/<repo> <PR> [--checkout <path>] [--supervisor <target>] "
+    assert ("/pr-review-auto <owner>/<repo> <PR> [--checkout <path>] [--supervisor <target>] "
             "[--interest <text>] [--decision <text>]") in text
     assert "follow `prompts/lead.md`" in text
     assert "deletes every uncommitted and untracked file" in text
     assert "whose `origin` is `<owner>/<repo>`" in text
-    assert "`pr-review checkout` refuses any other path and changes nothing there" in text
-    assert "`pr-review cleanup <owner>/<repo> --checkout <path>`" in text
+    assert "`pr-review-auto checkout` refuses any other path and changes nothing there" in text
+    assert "`pr-review-auto cleanup <owner>/<repo> --checkout <path>`" in text
     assert "checks that commit out, detached" in text
     assert "checks that commit out, detached" in _lead_section("Prepare")
 
@@ -116,47 +116,47 @@ def test_no_runtime_commands_in_prompts():
 
 def test_lead_reports_needs_config_when_started_by_supervisor():
     prepare = _lead_section("Prepare")
-    assert "pr-review paths <repo> <PR>" in prepare
+    assert "pr-review-auto paths <repo> <PR>" in prepare
     assert "exits 3" in prepare
     assert "With `--supervisor`: report `needs-config`" in prepare
     assert "never ask the user anything and never follow `configure.md`" in prepare
     assert "Without `--supervisor`: follow `<prompts>/configure.md` with the user" in prepare
-    assert "pr-review validate <repo>" in prepare
+    assert "pr-review-auto validate <repo>" in prepare
     # the config is settled before anything else happens
     needs_config = prepare.index("report `needs-config`")
-    for later in ("pr-review lock ", "pr-review checkout ", "pr-review spawn", "pr-review gh "):
+    for later in ("pr-review-auto lock ", "pr-review-auto checkout ", "pr-review-auto spawn", "pr-review-auto gh "):
         assert later not in prepare or needs_config < prepare.index(later), later
 
 
 def test_lead_reports_busy_and_stops():
     prepare = _lead_section("Prepare")
-    assert "pr-review lock <repo> <PR> --holder <holder>" in prepare
+    assert "pr-review-auto lock <repo> <PR> --holder <holder>" in prepare
     assert '`{"busy": true, ...}`' in prepare
     assert ("report `busy` (**Report**; you do not hold the lock, so **Report** item 1 does "
             "nothing) and stop") in prepare
     # Report item 1 releases the lock only when this run took it
     assert 'If you hold the lock (step 1 item 5 printed `{"locked": true}`), release it' in (
         _lead_section("Report"))
-    lock = prepare.index("pr-review lock ")
-    for later in ("pr-review decide ", "pr-review pr-state ", "pr-review checkout ",
-                  "pr-review gh "):
+    lock = prepare.index("pr-review-auto lock ")
+    for later in ("pr-review-auto decide ", "pr-review-auto pr-state ", "pr-review-auto checkout ",
+                  "pr-review-auto gh "):
         assert lock < prepare.index(later), later
 
 
 def test_lead_merged_closed_drops_branch():
     prepare = _lead_section("Prepare")
-    state = prepare.index("pr-review pr-state <repo> <PR>")
-    drop = prepare.index("pr-review drop-branch <repo> <PR> --checkout <checkout>")
+    state = prepare.index("pr-review-auto pr-state <repo> <PR>")
+    drop = prepare.index("pr-review-auto drop-branch <repo> <PR> --checkout <checkout>")
     assert "`MERGED` or `CLOSED`" in prepare
     assert "report `merged` or `closed`" in prepare
-    assert state < drop < prepare.index("pr-review checkout <repo> <PR> --checkout <checkout>")
+    assert state < drop < prepare.index("pr-review-auto checkout <repo> <PR> --checkout <checkout>")
 
 
 def test_lead_stops_when_checkout_refuses_the_path():
     lead = _flat(_prompts()["lead.md"])
     assert "root of a git worktree whose `origin` is `<repo>`" in lead
     prepare = _lead_section("Prepare")
-    checkout = prepare.index("pr-review checkout <repo> <PR> --checkout <checkout>")
+    checkout = prepare.index("pr-review-auto checkout <repo> <PR> --checkout <checkout>")
     refusal = prepare.index("its `origin` is not `<repo>`")
     assert checkout < refusal < prepare.index("gh pr view")
     assert ("Then do not retry: stop as in **When you cannot continue**, showing its message to "
@@ -165,10 +165,10 @@ def test_lead_stops_when_checkout_refuses_the_path():
 
 def test_lead_does_not_reapprove_same_head():
     prepare = _lead_section("Prepare")
-    check = prepare.index("pr-review review-state <repo> <PR>")
+    check = prepare.index("pr-review-auto review-state <repo> <PR>")
     assert "`status` is `approved` and `last_reviewed_head` equals the PR's `head`" in prepare
     assert "report `no-action`" in prepare
-    assert check < prepare.index("pr-review checkout <repo> <PR> --checkout <checkout>")
+    assert check < prepare.index("pr-review-auto checkout <repo> <PR> --checkout <checkout>")
     lead = _prompts()["lead.md"]
     assert "Never approve a head the notes already show approved" in _flat(lead)
     notes_format = lead[lead.index("## Notes file format"):]
@@ -178,7 +178,7 @@ def test_lead_does_not_reapprove_same_head():
 
 def test_lead_records_and_applies_decision():
     prepare = _lead_section("Prepare")
-    assert 'pr-review decide <repo> <PR> "<decision text>"' in prepare
+    assert 'pr-review-auto decide <repo> <PR> "<decision text>"' in prepare
     follow_up = _lead_section("Act on GitHub: follow-up")
     assert "A `## Decision` in the notes" in follow_up
     finish = _lead_section("Finish")
@@ -195,8 +195,8 @@ def test_lead_spot_check_only_with_interest():
 
 def test_lead_spawns_from_checkout_reviewer_first():
     team_section = _lead_section("Start the team")
-    reviewer = team_section.index("cd <checkout> && pr-review spawn <repo> <PR> reviewer")
-    architect = team_section.index("cd <checkout> && pr-review spawn <repo> <PR> architect")
+    reviewer = team_section.index("cd <checkout> && pr-review-auto spawn <repo> <PR> reviewer")
+    architect = team_section.index("cd <checkout> && pr-review-auto spawn <repo> <PR> architect")
     assert reviewer < architect
     assert "Spawn the reviewer first" in team_section
     assert "one reviewer and one architect" in team_section
@@ -216,10 +216,10 @@ def test_lead_done_format():
 
 def test_lead_unlocks_on_every_exit():
     report = _lead_section("Report")
-    unlock = report.index("pr-review unlock <repo> <PR> --holder <holder>")
+    unlock = report.index("pr-review-auto unlock <repo> <PR> --holder <holder>")
     assert unlock < report.index(DONE)
     assert "every exit after `lock` succeeded goes through this section" in report
-    assert "pr-review unlock <repo> <PR> --holder <holder>" in _lead_section("When you cannot continue")
+    assert "pr-review-auto unlock <repo> <PR> --holder <holder>" in _lead_section("When you cannot continue")
     prepare = _lead_section("Prepare")
     assert "From here on, every exit ends with **Report**, which releases the lock" in prepare
     assert "Go to **Report**" in _lead_section("Finish")
@@ -242,13 +242,13 @@ def test_every_reported_result_points_to_report():
 
 def test_lead_cleans_up_after_a_checked_out_run():
     report = _lead_section("Report")
-    cleanup = report.index("pr-review cleanup <repo> --checkout <checkout>")
+    cleanup = report.index("pr-review-auto cleanup <repo> --checkout <checkout>")
     assert "If this run checked out the PR (step 1 item 9)" in report
     assert "This step is not fatal" in report
     assert "do not retry it, and do not change the result" in report
-    assert report.index("pr-review unlock ") < cleanup < report.index(DONE)
+    assert report.index("pr-review-auto unlock ") < cleanup < report.index(DONE)
     stuck = _lead_section("When you cannot continue")
-    assert ("If this run checked out the PR, run `pr-review cleanup <repo> --checkout <checkout>` "
+    assert ("If this run checked out the PR, run `pr-review-auto cleanup <repo> --checkout <checkout>` "
             "as in **Report** item 2") in stuck
     branches = _flat(_skill_md().split("## Branches")[1].split("\n## ")[0])
     assert "Every run that checked out its PR also runs `cleanup`" in branches
@@ -257,8 +257,8 @@ def test_lead_cleans_up_after_a_checked_out_run():
 
 def test_lead_finish_drops_branch_when_approved_and_closes_members():
     finish = _lead_section("Finish")
-    assert "pr-review member-close <agent>" in finish
-    assert "pr-review drop-branch <repo> <PR> --checkout <checkout>" in finish
+    assert "pr-review-auto member-close <agent>" in finish
+    assert "pr-review-auto drop-branch <repo> <PR> --checkout <checkout>" in finish
     assert finish.index("member-close") < finish.index("drop-branch")
 
 
@@ -362,9 +362,9 @@ def test_configure_asks_repository_fields_and_validates_candidate():
         assert f"`{field}`" in text, field
     assert "Ask one question at a time" in text
     assert "Ask for `persona_dir` only when the default does not exist" in text
-    assert "PR_REVIEW_HOME=<tmpdir> pr-review validate <owner>/<repo>" in text
+    assert "PR_REVIEW_AUTO_HOME=<tmpdir> pr-review-auto validate <owner>/<repo>" in text
     assert "<tmpdir>/<owner>/<repo>/config.yaml" in text
-    assert text.index("pr-review validate") < text.index("move the candidate")
+    assert text.index("pr-review-auto validate") < text.index("move the candidate")
 
 
 def test_configure_states_team_defaults_and_asks_only_to_override():
@@ -443,8 +443,8 @@ def test_exchange_pairs_reviewer_and_architect():
 
 def test_exchange_messages_match_templates():
     section = _lead_section(CROSS_REVIEW)
-    assert 'pr-review notify <agent> "critique <report path> into <runs>/<agent>-critique.md"' in section
-    assert 'pr-review notify <agent> "revise <critique path>"' in section
+    assert 'pr-review-auto notify <agent> "critique <report path> into <runs>/<agent>-critique.md"' in section
+    assert 'pr-review-auto notify <agent> "revise <critique path>"' in section
     for name in TASKS:
         exchange = _task_section(name, CROSS_REVIEW)
         assert "`critique <report path> into <critique path>`" in exchange, name
@@ -536,18 +536,18 @@ def test_lead_continues_past_merged_closed_only_with_include_merged():
     lead = _flat(_prompts()["lead.md"])
     assert "[--decision <text>] [--include-merged]" in lead
     prepare = _lead_section("Prepare")
-    without = prepare.index("Without `--include-merged`, run `pr-review drop-branch")
+    without = prepare.index("Without `--include-merged`, run `pr-review-auto drop-branch")
     stop = prepare.index("report `merged` or `closed` (**Report**), and stop")
     with_flag = prepare.index("With `--include-merged`, continue this run as a preview")
     assert prepare.index("`MERGED` or `CLOSED`") < without < stop < with_flag
-    assert with_flag < prepare.index("pr-review checkout <repo> <PR> --checkout <checkout>")
+    assert with_flag < prepare.index("pr-review-auto checkout <repo> <PR> --checkout <checkout>")
 
 
 def test_lead_preview_reports_dry_run_never_approves_and_drops_branch():
     finish = _lead_section("Finish")
     assert "In a preview, the result is never `approved`" in finish
     assert "never set `Status: approved`" in finish
-    drop = finish.index("pr-review drop-branch <repo> <PR> --checkout <checkout>")
+    drop = finish.index("pr-review-auto drop-branch <repo> <PR> --checkout <checkout>")
     assert "or this run is a preview" in finish[:drop + 200]
     assert finish.index("member-close") < drop < finish.index("Go to **Report**")
     report = _lead_section("Report")
@@ -576,7 +576,7 @@ def test_lead_refuses_full_review_unless_dry_run_before_locking():
     prepare = _lead_section("Prepare")
     config = prepare.index("Read the repository config file")
     refusal = prepare.index(REFUSAL)
-    lock = prepare.index("run `pr-review lock <repo> <PR> --holder <holder>`")
+    lock = prepare.index("run `pr-review-auto lock <repo> <PR> --holder <holder>`")
     assert config < refusal < lock
     around = prepare[refusal - 250:refusal]
     assert "With `--full-review`" in around and "`dry_run` is not `true`" in around
@@ -595,7 +595,7 @@ def test_lead_full_review_forces_first_review_and_leaves_threads_alone():
     assert "never change or reply to them" in section
     assert "Replace any existing notes file with a fresh one" in section
     assert "only dry-run state is replaced" in section
-    assert "`pr-review gh`" in section
+    assert "`pr-review-auto gh`" in section
     assert "`dry_run=true`" in section
     prepare = _lead_section("Prepare")
     assert "(not with `--full-review`)" in prepare[prepare.index("review-state"):]

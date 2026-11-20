@@ -1,4 +1,4 @@
-# Comment style (pr-review)
+# Comment style (pr-review-auto)
 
 How to write the text of each review comment and reply. This file covers only how a comment's
 text is written; placement and posting follow the lead's policy.

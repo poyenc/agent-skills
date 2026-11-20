@@ -70,7 +70,7 @@ def test_tab_open_start_message(write_config, fake, monkeypatch):
     prompt = calls.of("herdr")[-1]
     checkout = config.load("fmha")["checkout"]
     assert prompt == ["agent", "prompt", "prw-fmha-lead",
-                      f"/pr-review o/r 42 --checkout {checkout} --supervisor w7:p0 --interest x"]
+                      f"/pr-review-auto o/r 42 --checkout {checkout} --supervisor w7:p0 --interest x"]
 
 
 def test_tab_open_start_message_pi_with_decision(write_config, fake):
@@ -86,7 +86,7 @@ def test_tab_open_start_message_pi_with_decision(write_config, fake):
     herdr = calls.of("herdr")
     assert herdr[1][4] == "pi" and herdr[1][herdr[1].index("--") + 3:] == ["--model", "p/m:high"]
     checkout = config.load("fmha")["checkout"]
-    assert herdr[-1][3] == (f"/skill:pr-review o/r 42 --checkout {checkout} --supervisor w7:p0 "
+    assert herdr[-1][3] == (f"/skill:pr-review-auto o/r 42 --checkout {checkout} --supervisor w7:p0 "
                             "--interest 'FMHA kernels, not docs' --decision 'use the author'\"'\"'s view'")
 
 

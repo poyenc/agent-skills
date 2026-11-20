@@ -1,7 +1,7 @@
 # Example pr-watch config: FMHA (fused multi-head attention) PRs in ROCm/rocm-libraries.
 # Copy to ~/.claude/pr-watch/fmha.yaml and adjust. persona_dir, not listed here, takes its built-in default.
-# Each lead uses the `pr-review` skill, which keeps the review settings (review team, threshold, dry run)
-# per repository: run /pr-review ROCm/rocm-libraries <PR> once before starting this watcher.
+# Each lead uses the `pr-review-auto` skill, which keeps the review settings (review team, threshold, dry run)
+# per repository: run /pr-review-auto ROCm/rocm-libraries <PR> once before starting this watcher.
 name: fmha                          # watcher name; names the record directory and the lead agent
 repo: ROCm/rocm-libraries
 checkout: ~/workspace/worktree/pr-watch-fmha   # dedicated worktree the leads review in; each run discards its uncommitted and untracked files
@@ -23,5 +23,5 @@ team:
   supervisor: {harness: claude, model: sonnet, effort: medium}   # the session you run /pr-watch fmha in; must stay claude
   scanner:    {model: haiku}
   # lead is optional and defaults to the line below; a key you set replaces only that key. Overriding harness
-  # to pi requires a model too ({harness: pi, model: "<provider/id>"}); invoke defaults to /pr-review (claude) or /skill:pr-review (pi).
+  # to pi requires a model too ({harness: pi, model: "<provider/id>"}); invoke defaults to /pr-review-auto (claude) or /skill:pr-review-auto (pi).
   # lead: {harness: claude, model: "Claude-Sonnet-5.5[1m]", effort: high}

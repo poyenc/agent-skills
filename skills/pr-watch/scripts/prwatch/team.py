@@ -3,7 +3,7 @@
 The supervisor is the invoking session, so its herdr environment names the workspace
 (`HERDR_WORKSPACE_ID`) and the pane leads report to (`HERDR_PANE_ID`). Each PR run owns one tab
 there, recorded in the PR's entry as `tab_id` and `run_started_at`. The lead started in the tab
-runs the pr-review skill; `tab-open` hands it the start message and nothing else.
+runs the pr-review-auto skill; `tab-open` hands it the start message and nothing else.
 """
 import json
 import os

@@ -1,6 +1,6 @@
-"""Shared pytest fixtures for pr-review. Later test modules rely on these names.
+"""Shared pytest fixtures for pr-review-auto. Later test modules rely on these names.
 
-- `review_home` (autouse): temp dir; PR_REVIEW_HOME points at it.
+- `review_home` (autouse): temp dir; PR_REVIEW_AUTO_HOME points at it.
 - `write_config(repo="o/r", **overrides) -> pathlib.Path`: writes
   `<review_home>/<owner>/<name>/config.yaml` from a minimal valid base (`team.reviewer`,
   `team.architect`); overrides replace top-level keys; `drop=("key", ...)` omits
@@ -47,7 +47,7 @@ class Calls:
 def review_home(tmp_path, monkeypatch) -> Path:
     path = tmp_path / "home"
     path.mkdir()
-    monkeypatch.setenv("PR_REVIEW_HOME", str(path))
+    monkeypatch.setenv("PR_REVIEW_AUTO_HOME", str(path))
     return path
 
 
