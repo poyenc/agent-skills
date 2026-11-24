@@ -4,7 +4,7 @@
 
 For each agent it reads the visible pane text with `herdr agent read` and parses the status line
 that Claude Code and pi print at the bottom of the pane, for example
-`Sonnet 5 high . CH99.5%/92% 22.0%/1M` (context used / context window) and a `215376 tokens`
+`Sonnet 5.5 xhigh 22.0%/1M . CH99.5%/92%` (context used / context window) and a `215376 tokens`
 counter. The rotation thresholds are the ones in the project skill agent-rotation-discipline:
 Claude models 55%, gpt tier terra 45%, gpt tier sol 25% (any version: gpt-5.6-sol, gpt-6.1-sol, ...). Nothing is sent to any agent and nothing
 is rotated; rotating is the lead's job through the herdr-kit:rotate skill.
@@ -26,22 +26,29 @@ import re
 import subprocess
 import sys
 
-# "22.0%/1M": context used over window size. The cache-hit field "CH99.5%/92%" has no K/M
+# All patterns and name comparisons ignore case: the status lines print "1M" but "272k", and model ids come as
+# "Sonnet 5.5", "Claude-Sonnet-5.5" or "claude-sonnet-5-5" depending on the provider.
+# "22.0%/1M" or "46.2%/272k": context used over window size. The cache-hit field "CH99.5%/92%" has no K/M
 # suffix after the slash, so it does not match.
-CONTEXT_RE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)%/(\d+(?:\.\d+)?)([KM])\b")
-TOKENS_RE = re.compile(r"(\d[\d,]*)\s+tokens\b")
-# Claude Code prints "Sonnet 5 high <middle dot> CH99.5%/92% ..." (U+00B7; escaped to keep the file ASCII).
-CLAUDE_MODEL_RE = re.compile(r"((?:Sonnet|Opus|Haiku|Fable)[\w .\-]*?)\s*(?:\u00b7|\.)\s*CH")
-# pi prints "(provider) gpt-5.6-sol <bullet> medium" (U+2022). Anchoring on the bullet avoids matching
-# a model name that merely appears in the conversation text.
-GPT_MODEL_RE = re.compile(r"\b(gpt-[\w.]+-[A-Za-z]+)\s*\u2022")
+CONTEXT_RE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)%/(\d+(?:\.\d+)?)([KM])\b", re.IGNORECASE)
+TOKENS_RE = re.compile(r"(\d[\d,]*)\s+tokens\b", re.IGNORECASE)
+# Claude Code prints "Sonnet 5.5 xhigh 33.0%/1M ..." (model, effort, then the context figure).
+CLAUDE_MODEL_RE = re.compile(r"((?:Sonnet|Opus|Haiku|Fable)[\w .\-]*?)\s+\d+(?:\.\d+)?%/\d+(?:\.\d+)?[KM]\b", re.IGNORECASE)
+# pi prints "(provider) gpt-5.6-sol <bullet> medium 30.0%/1M" (U+2022); a model without reasoning has no bullet
+# and no effort word: "(provider) gpt-5.6-sol 30.0%/1M". Anchoring on the bullet or the context figure avoids
+# matching a model name that merely appears in the conversation text.
+_AFTER_PI_MODEL = r"\s*(?:\u2022|\d+(?:\.\d+)?%/)"
+GPT_MODEL_RE = re.compile(r"\b(gpt-[\w.]+-[A-Za-z]+)" + _AFTER_PI_MODEL, re.IGNORECASE)
+# pi prints the Claude model id as configured: "(provider) Claude-Sonnet-5.5 <bullet> medium 33.0%/1M" (gateway) or
+# "claude-sonnet-5-5 ..." (direct).
+PI_CLAUDE_MODEL_RE = re.compile(r"\b(claude-(?:sonnet|opus|haiku|fable)[\w.\-]*)" + _AFTER_PI_MODEL, re.IGNORECASE)
 
 # Percent of the context window at which the lead rotates (skill agent-rotation-discipline, rule 1).
 # The gpt tier is the last word of the model name; the version before it does not change the threshold. A tier not
 # listed here stays unknown (no threshold is guessed).
 GPT_TIER_THRESHOLDS = {"sol": 25.0, "terra": 45.0}
 CLAUDE_THRESHOLD = 55.0
-CLAUDE_PREFIXES = ("Sonnet", "Opus", "Haiku", "Fable")
+CLAUDE_PREFIXES = ("sonnet", "opus", "haiku", "fable", "claude-")
 
 
 def run_herdr(args: list[str]) -> str:
@@ -67,10 +74,10 @@ def list_agents(names: set[str] | None, prefix: str) -> list[dict]:
 def threshold_for(model: str | None) -> float | None:
     if not model:
         return None
-    gpt = re.fullmatch(r"gpt-[\w.]+-([A-Za-z]+)", model)
+    gpt = re.fullmatch(r"gpt-[\w.]+-([A-Za-z]+)", model, re.IGNORECASE)
     if gpt:
-        return GPT_TIER_THRESHOLDS.get(gpt.group(1))
-    if model.startswith(CLAUDE_PREFIXES):
+        return GPT_TIER_THRESHOLDS.get(gpt.group(1).lower())
+    if model.lower().startswith(CLAUDE_PREFIXES):
         return CLAUDE_THRESHOLD
     return None
 
@@ -85,7 +92,7 @@ def parse_pane(text: str) -> dict:
     tokens = TOKENS_RE.findall(text)
     if tokens:
         info["tokens"] = int(tokens[-1].replace(",", ""))
-    claude = CLAUDE_MODEL_RE.findall(text)
+    claude = PI_CLAUDE_MODEL_RE.findall(text) or CLAUDE_MODEL_RE.findall(text)
     gpt = GPT_MODEL_RE.findall(text)
     if claude:
         info["model"] = claude[-1].strip()
