@@ -15,6 +15,8 @@ Usage:
   agent_context_usage.py --names a,b           # only these agents (name or pane id)
   agent_context_usage.py --json                # machine-readable output
   agent_context_usage.py --rotate-only         # print only agents due for rotation (for cron)
+  agent_context_usage.py --threshold NAME=55   # per-agent threshold (name or pane id), repeatable;
+                                               # for a model the table below does not know
 
 Exit status: 0 normally; 2 when at least one scanned agent is at or above its threshold
 (so a caller can branch on it); 1 if herdr itself fails.
@@ -42,6 +44,11 @@ GPT_MODEL_RE = re.compile(r"\b(gpt-[\w.]+-[A-Za-z]+)" + _AFTER_PI_MODEL, re.IGNO
 # pi prints the Claude model id as configured: "(provider) Claude-Sonnet-5.5 <bullet> medium 33.0%/1M" (gateway) or
 # "claude-sonnet-5-5 ..." (direct).
 PI_CLAUDE_MODEL_RE = re.compile(r"\b(claude-(?:sonnet|opus|haiku|fable)[\w.\-]*)" + _AFTER_PI_MODEL, re.IGNORECASE)
+# Any other pi model, for example "(amd-gateway) DeepSeek-V4.1-Flash <bullet> high 53.5%/1.0M": the id after the
+# "(provider)" tag. It has no threshold of its own (see threshold_for); --threshold NAME=PERCENT supplies one.
+# The id must be followed by whitespace, so the "(auto) CH99.8%/98%" cache-hit field after the context figure is not
+# read as a model.
+PI_ANY_MODEL_RE = re.compile(r"\([\w.\-]+\)\s+([\w.\-/]+)\s+(?:•|\d+(?:\.\d+)?%/)", re.IGNORECASE)
 
 # Percent of the context window at which the lead rotates (skill agent-rotation-discipline, rule 1).
 # The gpt tier is the last word of the model name; the version before it does not change the threshold. A tier not
@@ -94,14 +101,17 @@ def parse_pane(text: str) -> dict:
         info["tokens"] = int(tokens[-1].replace(",", ""))
     claude = PI_CLAUDE_MODEL_RE.findall(text) or CLAUDE_MODEL_RE.findall(text)
     gpt = GPT_MODEL_RE.findall(text)
+    other = PI_ANY_MODEL_RE.findall(text)
     if claude:
         info["model"] = claude[-1].strip()
     elif gpt:
         info["model"] = gpt[-1]
+    elif other:
+        info["model"] = other[-1]
     return info
 
 
-def collect(agent: dict) -> dict:
+def collect(agent: dict, overrides: dict[str, float]) -> dict:
     target = agent.get("name") or agent["pane_id"]
     row = {
         "agent": target,
@@ -115,7 +125,9 @@ def collect(agent: dict) -> dict:
     except Exception as exc:  # an unreadable pane must not hide the other agents
         row.update({"context_percent": None, "window": None, "tokens": None, "model": None})
         row["error"] = str(exc)
-    row["threshold"] = threshold_for(row["model"])
+    # A --threshold override (by agent name or pane id) wins over the threshold of the model.
+    override = overrides.get(str(row["agent"]).lower(), overrides.get(str(row["pane"]).lower()))
+    row["threshold"] = override if override is not None else threshold_for(row["model"])
     if row["context_percent"] is None or row["threshold"] is None:
         row["level"] = "unknown"
     else:
@@ -134,10 +146,29 @@ def main() -> int:
         help="print one line per agent at ROTATE (name, state, usage); nothing when none is due.\n"
         "An agent whose status line cannot be parsed prints as UNKNOWN: look at its pane.",
     )
+    parser.add_argument(
+        "--threshold",
+        action="append",
+        default=[],
+        metavar="NAME=PERCENT",
+        help="rotation threshold for one agent (name or pane id), overriding the threshold of its model; repeatable,\n"
+        "for example --threshold NAME=55",
+    )
     args = parser.parse_args()
 
+    overrides: dict[str, float] = {}
+    for item in args.threshold:
+        key, sep, value = item.rpartition("=")
+        try:
+            percent = float(value)
+        except ValueError:
+            percent = -1.0
+        if not sep or not key.strip() or not 0 < percent <= 100:
+            parser.error(f"--threshold expects NAME=PERCENT with 0 < PERCENT <= 100, got {item!r}")
+        overrides[key.strip().lower()] = percent
+
     names = {n.strip() for n in args.names.split(",") if n.strip()} if args.names else None
-    rows = [collect(a) for a in list_agents(names, args.prefix)]
+    rows = [collect(a, overrides) for a in list_agents(names, args.prefix)]
     rows.sort(key=lambda r: -(r["context_percent"] if r["context_percent"] is not None else -1))
 
     if args.rotate_only:

@@ -29,6 +29,10 @@ python3 -I .claude/skills/agent-context-usage-monitor/scripts/agent_context_usag
   percent or model could not be parsed (pi hides the model in a narrow pane; no threshold is guessed; a parsed
   model missing from the threshold table prints its own name), and no line for an agent that is `ok`. Use it in a cron so
   the output itself says who to rotate and no judgement is needed.
+- `--threshold NAME=PERCENT` (repeatable; NAME is an agent name or pane id) sets one agent's threshold
+  and wins over the threshold of its model. Use it for an agent whose model the table does not know,
+  for example `--threshold NAME=55` for a pi agent on a model that is not a gpt or Claude model. Put the flag in the
+  cron command too, or that agent stays `UNKNOWN`.
 - Exit status is 2 when any scanned agent is at `ROTATE`, 0 otherwise, 1 if herdr fails.
 
 ## When a row says ROTATE
